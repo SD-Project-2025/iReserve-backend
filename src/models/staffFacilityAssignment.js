@@ -85,7 +85,7 @@ const StaffFacilityAssignment = sequelize.define(
   },
 )
 
-// Define associations
+//FK
 StaffFacilityAssignment.belongsTo(Staff, { foreignKey: "staff_id" })
 StaffFacilityAssignment.belongsTo(Facility, { foreignKey: "facility_id" })
 

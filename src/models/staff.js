@@ -73,7 +73,7 @@ const Staff = sequelize.define(
   },
 )
 
-// Define association
+//FK
 Staff.belongsTo(User, { foreignKey: "user_id" })
 
 module.exports = Staff

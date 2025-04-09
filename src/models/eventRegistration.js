@@ -84,8 +84,7 @@ const EventRegistration = sequelize.define(
     timestamps: false,
   },
 )
-
-// Define associations
+//Foreign key relationships
 EventRegistration.belongsTo(Event, { foreignKey: "event_id" })
 EventRegistration.belongsTo(Resident, { foreignKey: "resident_id" })
 

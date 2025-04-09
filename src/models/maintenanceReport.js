@@ -140,7 +140,10 @@ const MaintenanceReport = sequelize.define(
   },
 )
 
-// Define associations
+
+
+
+//Foreign keys
 MaintenanceReport.belongsTo(Facility, { foreignKey: "facility_id" })
 MaintenanceReport.belongsTo(Resident, { foreignKey: "reported_by_resident", as: "residentReporter" })
 MaintenanceReport.belongsTo(Staff, { foreignKey: "reported_by_staff", as: "staffReporter" })

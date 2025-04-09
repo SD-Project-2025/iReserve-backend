@@ -6,8 +6,6 @@ async function fixNullGoogleIds() {
   try {
     logger.info("Starting to fix null google_id values...")
     await sequelize.authenticate()
-
-    // Generate random placeholder google_ids for existing users with null values
     const result = await sequelize.query(`
       UPDATE users 
       SET google_id = 'placeholder_' || user_id || '_' || floor(random() * 1000000)::text

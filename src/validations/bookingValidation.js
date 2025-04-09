@@ -1,6 +1,6 @@
 const Joi = require("joi")
 
-// Create booking validation
+// Create booking validation, Checcks for unual errors
 exports.createBookingSchema = Joi.object({
   facility_id: Joi.number().required().integer().positive(),
   date: Joi.date().required().min("now"),
@@ -14,7 +14,7 @@ exports.createBookingSchema = Joi.object({
   attendees: Joi.number().required().integer().min(1),
 })
 
-// Update booking status validation
+
 exports.updateBookingStatusSchema = Joi.object({
   status: Joi.string().required().valid("pending", "approved", "rejected", "cancelled"),
 })

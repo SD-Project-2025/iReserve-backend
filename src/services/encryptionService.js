@@ -2,7 +2,7 @@ const crypto = require("crypto")
 
 // Get encryption key from environment variables
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
-const IV_LENGTH = 16 // For AES, this is always 16
+const IV_LENGTH = 16 //AES Encruption block size,Do not change!it will stop working!
 
 if (!ENCRYPTION_KEY) {
   throw new Error("ENCRYPTION_KEY is not defined in environment variables")

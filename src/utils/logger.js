@@ -1,11 +1,11 @@
 const winston = require("winston")
 
-// Define log format
+// log format
 const logFormat = winston.format.printf(({ level, message, timestamp }) => {
   return `${timestamp} ${level}: ${message}`
 })
 
-// Create logger
+// Create logger - using winston - Internet suggested it
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === "development" ? "debug" : "info",
   format: winston.format.combine(

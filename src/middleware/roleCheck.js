@@ -16,7 +16,7 @@ exports.isStaff = asyncHandler(async (req, res, next) => {
   next()
 })
 
-// Check if user is admin
+// Check if the user is the admin from the staff table
 exports.isAdmin = asyncHandler(async (req, res, next) => {
   const staff = await Staff.findOne({
     where: {
@@ -36,7 +36,7 @@ exports.isAdmin = asyncHandler(async (req, res, next) => {
   next()
 })
 
-// Check if user is resident
+// Check if user is resident - Works fine
 exports.isResident = asyncHandler(async (req, res, next) => {
   const resident = await Resident.findOne({ where: { user_id: req.user.user_id } })
 
@@ -51,7 +51,7 @@ exports.isResident = asyncHandler(async (req, res, next) => {
   next()
 })
 
-// Check if user is assigned to facility
+// Check if user is assigned to facility for staff only- had issues debugging this if there is issues
 exports.isAssignedToFacility = asyncHandler(async (req, res, next) => {
   const { facilityId } = req.params
 

@@ -133,7 +133,7 @@ const Booking = sequelize.define(
   },
 )
 
-// Define associations
+//Associations - Foreign Keys relationships in the database
 Booking.belongsTo(Facility, { foreignKey: "facility_id" })
 Booking.belongsTo(Resident, { foreignKey: "resident_id" })
 Booking.belongsTo(Staff, { foreignKey: "approved_by", as: "approver" })

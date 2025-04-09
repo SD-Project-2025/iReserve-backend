@@ -71,8 +71,7 @@ const Resident = sequelize.define(
     timestamps: false,
   },
 )
-
-// Define association
+//FK
 Resident.belongsTo(User, { foreignKey: "user_id" })
 
 module.exports = Resident

@@ -103,7 +103,7 @@ const Notification = sequelize.define(
   },
 )
 
-// Define associations
+//Foreign key constraint
 Notification.belongsTo(User, { foreignKey: "user_id" })
 
 module.exports = Notification

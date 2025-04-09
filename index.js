@@ -7,7 +7,7 @@ const routes = require("./src/routes")
 
 const PORT = process.env.PORT || 3000
 
-// Test database connection before starting server
+
 ;(async () => {
   const isConnected = await testConnection()
 
@@ -15,8 +15,7 @@ const PORT = process.env.PORT || 3000
     logger.error("Failed to connect to database. Exiting application.")
     process.exit(1)
   }
-
-  // Run database migrations
+//Auto Migrate data to neon,if not yet updated-Just in case
   const autoMigrate = process.env.AUTO_MIGRATE === "true"
   const forceMigrate = process.env.FORCE_MIGRATE === "true"
 
@@ -35,15 +34,13 @@ const PORT = process.env.PORT || 3000
     logger.info(`API Documentation available at http://localhost:${PORT}/api-docs`)
   })
 
-  // Handle unhandled promise rejections
+  //Error handilng
   process.on("unhandledRejection", (err) => {
     logger.error("UNHANDLED REJECTION! Shutting down...", err)
     server.close(() => {
       process.exit(1)
     })
   })
-
-  // Handle uncaught exceptions
   process.on("uncaughtException", (err) => {
     logger.error("UNCAUGHT EXCEPTION! Shutting down...", err)
     process.exit(1)
