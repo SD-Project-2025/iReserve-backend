@@ -1,6 +1,6 @@
 const Joi = require("joi")
 
-// Create facility validation
+
 exports.createFacilitySchema = Joi.object({
   name: Joi.string().required().min(3).max(100),
   type: Joi.string().required().min(2).max(50),
@@ -18,7 +18,7 @@ exports.createFacilitySchema = Joi.object({
   status: Joi.string().valid("open", "closed", "maintenance").default("open"),
 })
 
-// Update facility validation
+
 exports.updateFacilitySchema = Joi.object({
   name: Joi.string().min(3).max(100),
   type: Joi.string().min(2).max(50),
@@ -32,7 +32,7 @@ exports.updateFacilitySchema = Joi.object({
   status: Joi.string().valid("open", "closed", "maintenance"),
 })
 
-// Assign staff validation
+
 exports.assignStaffSchema = Joi.object({
   staff_id: Joi.number().required().integer().positive(),
   role: Joi.string().required().min(2).max(50),
