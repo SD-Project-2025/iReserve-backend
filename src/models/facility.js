@@ -126,4 +126,6 @@ const Facility = sequelize.define(
   },
 )
 
+
+
 module.exports = Facility

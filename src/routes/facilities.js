@@ -231,4 +231,30 @@ router.post(
  */
 router.get("/:id/staff", protect, isStaff, facilityController.getAssignedStaff)
 
+/**
+ * @swagger
+ * /facilities/staff/{staff_id}:
+ *   get:
+ *     summary: Get all facilities assigned to a staff member
+ *     tags: [Facilities]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staff_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Staff ID
+ *     responses:
+ *       200:
+ *         description: List of facilities
+ *       404:
+ *         description: No facilities found for staff
+ *       500:
+ *         description: Server error
+ */
+router.get("/staff/:staff_id", protect, isStaff, facilityController.getFacilitiesByStaffId)
+
+
 module.exports = router

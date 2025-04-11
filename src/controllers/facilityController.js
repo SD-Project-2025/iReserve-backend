@@ -150,4 +150,36 @@ exports.getAssignedStaff = asyncHandler(async (req, res) => {
   res.status(200).json(responseFormatter.success(assignments, "Assigned staff retrieved successfully"))
 })
 
+exports.getFacilitiesByStaffId = async (req, res) => {
+  const { staff_id } = req.params
+
+  try {
+    // Step 1: Get all facility_ids assigned to this staff member
+    const assignments = await StaffFacilityAssignment.findAll({
+      where: { staff_id },
+      attributes: ["facility_id"],
+    })
+
+    if (assignments.length === 0) {
+      return res.status(404).json({ message: "No facilities assigned to this staff member." })
+    }
+
+    const facilityIds = assignments.map((a) => a.facility_id)
+
+    // Step 2: Get all facilities with those IDs
+    const facilities = await Facility.findAll({
+      where: {
+        facility_id: {
+          [Op.in]: facilityIds,
+        },
+      },
+    })
+
+    res.status(200).json(facilities)
+  } catch (error) {
+    console.error("Error fetching facilities by staff ID:", error)
+    res.status(500).json({ message: "Server error" })
+  }
+}
+
 module.exports = exports
