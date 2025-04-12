@@ -52,13 +52,8 @@ jobs:
           echo "GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}" >> .env
           echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> .env
 
-      - name: Test Run
-        run: npm start
-
-      # Optional: Add build or start step if needed
-      # - name: Build
-      #   run: npm run build
-
-      # - name: Start App
-      #   run: node src/index.js
-      #   if: false
+      - name: Start the app
+        run: |
+          nohup npm start &   # Start the app in the background
+          sleep 30            # Give it some time to start and ensure it's running
+          curl -f http://localhost:${PORT}/api-docs # Optionally, check if the server is responding
