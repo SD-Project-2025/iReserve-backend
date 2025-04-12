@@ -1,4 +1,4 @@
-const { Event, Facility, Staff, EventRegistration, Resident } = require("../models")
+const { Event, Facility, Staff, EventRegistration } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 

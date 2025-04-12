@@ -8,7 +8,7 @@ const swaggerUi = require("swagger-ui-express")
 const errorHandler = require("./middleware/errorHandler")
 const routes = require("./routes")
 const swaggerSpec = require("./config/swagger")
-const logger = require("./utils/logger")
+//const logger = require("./utils/logger")
 
 // Initialize express app
 const app = express()
