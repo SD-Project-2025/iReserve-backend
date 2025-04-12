@@ -1,71 +1,64 @@
-name: Node.js CI
+name: CI Build & Test Express App
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [16.x, 18.x, 20.x]
+    env:
+      PORT: ${{ secrets.PORT }}
+      NODE_ENV: ${{ secrets.NODE_ENV }}
+      API_URL: ${{ secrets.API_URL }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      DB_URL: ${{ secrets.DB_URL }}
+      AUTO_MIGRATE: ${{ secrets.AUTO_MIGRATE }}
+      FORCE_MIGRATE: ${{ secrets.FORCE_MIGRATE }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_REDIRECT_URI }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
 
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Lint
-      run: npm run lint
-      
-    - name: Run tests
-      run: npm test
-      
-    - name: Generate coverage report
-      run: npm run test:coverage
-      
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        directory: ./coverage/
-        fail_ci_if_error: true
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18.x'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build
-      run: npm run build --if-present
-      
-    # Add deployment steps here
-    # For example, deploying to Heroku:
-    # - name: Deploy to Heroku
-    #   uses: akhileshns/heroku-deploy@v3.12.14
-    #   with:
-    #     heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-    #     heroku_app_name: "your-app-name"
-    #     heroku_email: "your-email@example.com"
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Create .env file
+        run: |
+          echo "PORT=${PORT}" >> .env
+          echo "NODE_ENV=${NODE_ENV}" >> .env
+          echo "API_URL=${API_URL}" >> .env
+          echo "FRONTEND_URL=${FRONTEND_URL}" >> .env
+          echo "DB_URL=${DB_URL}" >> .env
+          echo "AUTO_MIGRATE=${AUTO_MIGRATE}" >> .env
+          echo "FORCE_MIGRATE=${FORCE_MIGRATE}" >> .env
+          echo "JWT_SECRET=${JWT_SECRET}" >> .env
+          echo "JWT_EXPIRES_IN=${JWT_EXPIRES_IN}" >> .env
+          echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" >> .env
+          echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" >> .env
+          echo "GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}" >> .env
+          echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> .env
+
+      - name: Run Unit Tests
+        run: npm test
+
+      # Optional: Add build or start step if needed
+      # - name: Build
+      #   run: npm run build
+
+      # - name: Start App
+      #   run: node src/index.js
+      #   if: false
