@@ -53,7 +53,7 @@ jobs:
           echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> .env
 
       - name: Run Unit Tests
-        run: npm test
+        run: npm start
 
       # Optional: Add build or start step if needed
       # - name: Build
