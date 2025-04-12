@@ -52,7 +52,7 @@ jobs:
           echo "GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}" >> .env
           echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> .env
 
-      - name: Run Unit Tests
+      - name: Test Run
         run: npm start
 
       # Optional: Add build or start step if needed
