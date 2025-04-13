@@ -2,6 +2,8 @@ const { Booking, Facility, Resident, Staff } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { sequelize } = require("../models") // Import sequelize
+const { Op } = require('sequelize');
+
 
 // @desc    Get all bookings
 // @route   GET /api/v1/bookings
@@ -135,46 +137,40 @@ exports.createBooking = asyncHandler(async (req, res) => {
   }
 
   // Check for time conflicts
-  const conflictingBooking = await Booking.findOne({
-    where: {
-      facility_id,
-      date,
-      status: ["pending", "approved"],
-      [sequelize.Op.or]: [
-        {
-          // New booking starts during an existing booking
-          start_time: {
-            [sequelize.Op.lt]: end_time,
-            [sequelize.Op.gte]: start_time,
-          },
-        },
-        {
-          // New booking ends during an existing booking
-          end_time: {
-            [sequelize.Op.lte]: end_time,
-            [sequelize.Op.gt]: start_time,
-          },
-        },
-        {
-          // New booking completely contains an existing booking
-          start_time: {
-            [sequelize.Op.lte]: start_time,
-          },
-          end_time: {
-            [sequelize.Op.gte]: end_time,
-          },
-        },
-      ],
+  const { sequelize } = require("../models");
+
+// Check for time conflicts
+const { Op } = require("sequelize")
+
+// Check for time conflicts
+const conflictingBooking = await Booking.findOne({
+  where: {
+    facility_id,
+    date,
+    status: {
+      [Op.in]: ["pending", "approved"],
     },
-  })
+    [Op.and]: [
+      {
+        start_time: {
+          [Op.lt]: end_time,
+        },
+      },
+      {
+        end_time: {
+          [Op.gt]: start_time,
+        },
+      },
+    ],
+  },
+})
 
-  if (conflictingBooking) {
-    return res.status(400).json({
-      success: false,
-      message: "The selected time slot conflicts with an existing booking",
-    })
-  }
-
+if (conflictingBooking) {
+  return res.status(400).json({
+    success: false,
+    message: "The selected time slot conflicts with an existing booking",
+  });
+}
   // Create booking
   const booking = await Booking.create({
     facility_id,
