@@ -1,10 +1,10 @@
 const { Booking, Facility, Resident, Staff } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
-const { sequelize } = require("../models") // Import sequelize
+//const { sequelize } = require("../models") // Import sequelize
 const { Op } = require('sequelize');
-
-
+Op ;
+//sequelize;
 // @desc    Get all bookings
 // @route   GET /api/v1/bookings
 // @access  Private (Admin/Staff)
@@ -137,7 +137,7 @@ exports.createBooking = asyncHandler(async (req, res) => {
   }
 
   // Check for time conflicts
-  const { sequelize } = require("../models");
+  //const { sequelize } = require("../models");
 
 // Check for time conflicts
 const { Op } = require("sequelize")
