@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "build": "npm run lint",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -14,7 +15,8 @@
     "migrate": "node src/config/database.js migrate",
     "migrate:force": "node src/config/database.js migrate --force",
     "fix-db": "node src/scripts/fix-null-google-ids.js",
-    "seed": "node src/config/database.js seed"
+    "seed": "node src/config/database.js seed",
+     "upload-coverage": "codecov"
   },
   "keywords": [
     "sports",
@@ -44,6 +46,7 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "codecov": "^3.8.3",
     "eslint": "^8.56.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",

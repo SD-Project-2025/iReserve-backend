@@ -1,4 +1,4 @@
-const { Notification, User } = require("../models")
+const { Notification} = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 

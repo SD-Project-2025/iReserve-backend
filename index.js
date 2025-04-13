@@ -2,7 +2,7 @@ require("dotenv").config()
 const app = require("./src/app")
 const logger = require("./src/utils/logger")
 const { testConnection, migrate } = require("./src/config/database")
-const routes = require("./src/routes")
+//const routes = require("./src/routes")
 
 
 const PORT = process.env.PORT || 3000
