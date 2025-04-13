@@ -1,7 +1,6 @@
 const { Facility, StaffFacilityAssignment, Staff } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
-const { Op } = require('sequelize');
 
 
 exports.getFacilities = asyncHandler(async (req, res) => {
