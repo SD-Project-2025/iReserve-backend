@@ -1,5 +1,4 @@
 const { Facility, StaffFacilityAssignment, Staff } = require("../models")
-const { Op } = require("sequelize")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Op } = require('sequelize');

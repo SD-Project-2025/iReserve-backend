@@ -254,7 +254,7 @@ router.get("/:id/staff", protect, isStaff, facilityController.getAssignedStaff)
  *       500:
  *         description: Server error
  */
-router.get("/staff/:staff_id", protect, isStaff, facilityController.getFacilitiesByStaffId)
+router.get("/staff/:staff_id", facilityController.getFacilitiesByStaffId)
 
 
 module.exports = router
