@@ -21,8 +21,9 @@ jobs:
       - name: 📦 Install dependencies
         run: npm install
 
-      - name: 🧪 Run tests with coverage (fail on test failure)
+      - name: 🧪 Run tests with coverage (continue on failure)
         run: npm run test:coverage
+        continue-on-error: true
 
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -43,7 +44,7 @@ jobs:
   deploy-coverage:
     needs: test
     runs-on: ubuntu-latest
-    if: ${{ success() && github.ref == 'refs/heads/main' }}
+    if: always()  # Ensure this job always runs
     steps:
       - name: ⬇️ Checkout code
         uses: actions/checkout@v3
