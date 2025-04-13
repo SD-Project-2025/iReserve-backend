@@ -25,8 +25,8 @@ if (process.env.NODE_ENV === "development") {
 // Rate limiting - to prevent brute-force attacks and DDoS attacks
 const limiter = rateLimit({
   max: 100,
-  windowMs: 15 * 60 * 1000,
-  message: "Too many requests from this IP, please try again after 15 minutes",
+  windowMs: 1 * 60 * 1000,
+  message: "Too many requests from this IP, please try again after 1 minute",
 })
 app.use("/api", limiter)
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
