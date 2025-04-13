@@ -1,4 +1,5 @@
 const { Facility, StaffFacilityAssignment, Staff } = require("../models")
+const { Op } = require("sequelize")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 
@@ -151,35 +152,35 @@ exports.getAssignedStaff = asyncHandler(async (req, res) => {
 })
 
 exports.getFacilitiesByStaffId = async (req, res) => {
-  const { staff_id } = req.params
+  const { staff_id } = req.params;
 
   try {
-    // Step 1: Get all facility_ids assigned to this staff member
     const assignments = await StaffFacilityAssignment.findAll({
       where: { staff_id },
-      attributes: ["facility_id"],
-    })
+      include: [
+        {
+          model: Facility,
+          attributes: [
+            "facility_id", "name", "type", "location", "capacity",
+            "image_url", "is_indoor", "description", "open_time", "close_time", "status"
+          ],
+        },
+      ],
+    });
 
-    if (assignments.length === 0) {
-      return res.status(404).json({ message: "No facilities assigned to this staff member." })
+    if (!assignments || assignments.length === 0) {
+      return res.status(404).json({ message: "No facilities assigned to this staff member." });
     }
 
-    const facilityIds = assignments.map((a) => a.facility_id)
+    // Return only the facilities
+    const facilities = assignments.map((a) => a.Facility);
 
-    // Step 2: Get all facilities with those IDs
-    const facilities = await Facility.findAll({
-      where: {
-        facility_id: {
-          [Op.in]: facilityIds,
-        },
-      },
-    })
-
-    res.status(200).json(facilities)
+    return res.status(200).json(facilities);
   } catch (error) {
-    console.error("Error fetching facilities by staff ID:", error)
-    res.status(500).json({ message: "Server error" })
+    console.error("Error fetching facilities by staff ID:", error);
+    return res.status(500).json({ message: "Internal server error." });
   }
-}
+};
+
 
 module.exports = exports
