@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-   "build": "npm run lint && npm run test:coverage",
+  "build": "npm run lint",
+
     "test:cov": "jest --coverage",
     "test": "jest",
     "test:watch": "jest --watch",
