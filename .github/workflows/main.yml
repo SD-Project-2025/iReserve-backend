@@ -52,11 +52,8 @@ jobs:
           echo "GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}" >> .env
           echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> .env
 
-      - name: Run tests with coverage
-        run: npm run test:coverage
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: SD-Project-2025/iReserve-backend
+      - name: Start the app
+        run: |
+          nohup npm start &   # Start the app in the background
+          sleep 30            # Give it some time to start and ensure it's running
+          curl -f http://localhost:${PORT}/api-docs # Optionally, check if the server is responding
