@@ -1,5 +1,5 @@
 const validate = require('../../../src/middleware/validate');
-const Joi = require('joi');
+//const Joi = require('joi');
 
 describe('Validation Middleware', () => {
   let req, res, next;

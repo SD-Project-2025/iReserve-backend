@@ -29,8 +29,8 @@ describe('Notification Controller', () => {
     jest.clearAllMocks();
     
     // Mock responseFormatter.success to return its input
-    responseFormatter = require('../../../src/utils/responseFormatter');
-    responseFormatter.success = jest.fn((data, message) => ({ success: true, data, message }));
+    //responseFormatter = require('../../../src/utils/responseFormatter');
+    //responseFormatter.success = jest.fn((data, message) => ({ success: true, data, message }));
   });
 
   describe('getNotifications', () => {
