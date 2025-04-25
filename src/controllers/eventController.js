@@ -1,6 +1,7 @@
 const { Event, Facility, Staff, EventRegistration } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
+const { Op } = require('sequelize');
 
 // @desc    Get all events
 // @route   GET /api/v1/events
@@ -177,13 +178,13 @@ exports.deleteEvent = asyncHandler(async (req, res) => {
 // @route   POST /api/v1/events/:id/register
 // @access  Private (Resident)
 exports.registerForEvent = asyncHandler(async (req, res) => {
-  const event = await Event.findByPk(req.params.id)
+  const event = await Event.findByPk(req.params.id);
 
   if (!event) {
     return res.status(404).json({
       success: false,
       message: "Event not found",
-    })
+    });
   }
 
   // Check if event is upcoming
@@ -191,7 +192,7 @@ exports.registerForEvent = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: `Cannot register for ${event.status} event`,
-    })
+    });
   }
 
   // Check if registration deadline has passed
@@ -199,47 +200,72 @@ exports.registerForEvent = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Registration deadline has passed",
-    })
+    });
   }
 
-  // Check if already registered
+  // Check if already registered (only consider active registrations)
   const existingRegistration = await EventRegistration.findOne({
     where: {
       event_id: event.event_id,
       resident_id: req.resident.resident_id,
+      status: {
+        [Op.not]: 'cancelled' // Only check non-cancelled registrations
+      }
     },
-  })
+  });
 
   if (existingRegistration) {
     return res.status(400).json({
       success: false,
       message: "You are already registered for this event",
-    })
+    });
   }
 
-  // Check if event is full
+  // Check if event is full (only count active registrations)
   const registrationCount = await EventRegistration.count({
-    where: { event_id: event.event_id },
-  })
+    where: { 
+      event_id: event.event_id,
+      status: {
+        [Op.not]: 'cancelled' // Only count non-cancelled registrations
+      }
+    },
+  });
 
   if (registrationCount >= event.capacity) {
     return res.status(400).json({
       success: false,
       message: "Event is at full capacity",
-    })
+    });
   }
 
-  // Create registration
-  const registration = await EventRegistration.create({
-    event_id: event.event_id,
-    resident_id: req.resident.resident_id,
-    status: "registered",
-    payment_status: event.fee > 0 ? "pending" : "not_required",
-  })
+  // Check for previous cancelled registration
+  const cancelledRegistration = await EventRegistration.findOne({
+    where: {
+      event_id: event.event_id,
+      resident_id: req.resident.resident_id,
+      status: 'cancelled'
+    },
+  });
 
-  res.status(201).json(responseFormatter.success(registration, "Registered for event successfully"))
-})
+  // Either update the cancelled registration or create a new one
+  let registration;
+  if (cancelledRegistration) {
+    registration = await cancelledRegistration.update({
+      status: "registered",
+      payment_status: event.fee > 0 ? "pending" : "not_required",
+      registration_date: new Date()
+    });
+  } else {
+    registration = await EventRegistration.create({
+      event_id: event.event_id,
+      resident_id: req.resident.resident_id,
+      status: "registered",
+      payment_status: event.fee > 0 ? "pending" : "not_required",
+    });
+  }
 
+  res.status(201).json(responseFormatter.success(registration, "Registered for event successfully"));
+});
 // @desc    Cancel event registration
 // @route   PUT /api/v1/events/:id/cancel-registration
 // @access  Private (Resident)

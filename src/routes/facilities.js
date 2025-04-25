@@ -256,5 +256,11 @@ router.get("/:id/staff", protect, isStaff, facilityController.getAssignedStaff)
  */
 router.get("/staff/:staff_id", protect, isStaff, facilityController.getFacilitiesByStaffId)
 
+// Existing routes...
+router.post("/ratings", facilityController.createFacilityRating); // POST a new rating
+router.get("/:id/ratings", facilityController.getRatingsByFacilityId); // GET all ratings for a facility
+router.get("/ratings", facilityController.getFacilityRatings); // GET average ratings summary
+
+
 
 module.exports = router

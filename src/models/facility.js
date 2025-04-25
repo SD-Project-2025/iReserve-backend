@@ -125,6 +125,10 @@ const Facility = sequelize.define(
     timestamps: false,
   },
 )
+Facility.associate = function (models) {
+  Facility.hasMany(models.FacilityRating, { foreignKey: "facility_id" });
+};
+
 
 
 

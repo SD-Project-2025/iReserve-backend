@@ -183,3 +183,266 @@ exports.getFacilitiesByStaffId = async (req, res) => {
 
 
 module.exports = exports
+const { Facility, StaffFacilityAssignment, Staff, FacilityRating } = require("../models")
+const asyncHandler = require("../utils/asyncHandler")
+const responseFormatter = require("../utils/responseFormatter")
+const { Sequelize } = require("sequelize")
+
+
+exports.getFacilities = asyncHandler(async (req, res) => {
+  const { type, status, isIndoor } = req.query
+
+  
+  const filter = {}
+  if (type) filter.type = type
+  if (status) filter.status = status
+  if (isIndoor !== undefined) filter.is_indoor = isIndoor === "true"
+
+  const facilities = await Facility.findAll({
+    where: filter,
+    order: [["name", "ASC"]],
+  })
+
+  res.status(200).json(responseFormatter.success(facilities, "Facilities retrieved successfully"))
+})
+
+
+exports.getFacility = asyncHandler(async (req, res) => {
+  const facility = await Facility.findByPk(req.params.id)
+
+  if (!facility) {
+    return res.status(404).json({
+      success: false,
+      message: "Facility not found",
+    })
+  }
+
+  res.status(200).json(responseFormatter.success(facility, "Facility retrieved successfully"))
+})
+
+exports.createFacility = asyncHandler(async (req, res) => {
+  const { name, type, location, capacity, image_url, is_indoor, description, open_time, close_time, status } = req.body
+
+
+  const facility = await Facility.create({
+    name,
+    type,
+    location,
+    capacity,
+    image_url,
+    is_indoor,
+    description,
+    open_time,
+    close_time,
+    status: status || "open",
+    created_by: req.staff.staff_id,
+  })
+
+  res.status(201).json(responseFormatter.success(facility, "Facility created successfully"))
+})
+
+
+exports.updateFacility = asyncHandler(async (req, res) => {
+  let facility = await Facility.findByPk(req.params.id)
+
+  if (!facility) {
+    return res.status(404).json({
+      success: false,
+      message: "Facility not found",
+    })
+  }
+
+
+  facility = await facility.update(req.body)
+
+  res.status(200).json(responseFormatter.success(facility, "Facility updated successfully"))
+})
+
+
+exports.deleteFacility = asyncHandler(async (req, res) => {
+  const facility = await Facility.findByPk(req.params.id)
+
+  if (!facility) {
+    return res.status(404).json({
+      success: false,
+      message: "Facility not found",
+    })
+  }
+
+  await facility.destroy()
+
+  res.status(200).json(responseFormatter.success(null, "Facility deleted successfully"))
+})
+
+
+exports.assignStaff = asyncHandler(async (req, res) => {
+  const { staff_id, role, is_primary } = req.body
+
+
+  const facility = await Facility.findByPk(req.params.id)
+  if (!facility) {
+    return res.status(404).json({
+      success: false,
+      message: "Facility not found",
+    })
+  }
+
+  const staff = await Staff.findByPk(staff_id)
+  if (!staff) {
+    return res.status(404).json({
+      success: false,
+      message: "Staff not found",
+    })
+  }
+
+
+  const existingAssignment = await StaffFacilityAssignment.findOne({
+    where: {
+      staff_id,
+      facility_id: req.params.id,
+    },
+  })
+
+  if (existingAssignment) {
+    return res.status(400).json({
+      success: false,
+      message: "Staff is already assigned to this facility",
+    })
+  }
+
+  const assignment = await StaffFacilityAssignment.create({
+    staff_id,
+    facility_id: req.params.id,
+    role,
+    assigned_date: new Date(),
+    is_primary: is_primary || false,
+  })
+
+  res.status(201).json(responseFormatter.success(assignment, "Staff assigned to facility successfully"))
+})
+
+
+exports.getAssignedStaff = asyncHandler(async (req, res) => {
+  const assignments = await StaffFacilityAssignment.findAll({
+    where: { facility_id: req.params.id },
+    include: [
+      {
+        model: Staff,
+        include: ["User"],
+      },
+    ],
+  })
+
+  res.status(200).json(responseFormatter.success(assignments, "Assigned staff retrieved successfully"))
+})
+
+exports.getFacilitiesByStaffId = async (req, res) => {
+  const { staff_id } = req.params;
+
+  try {
+    const assignments = await StaffFacilityAssignment.findAll({
+      where: { staff_id },
+      include: [
+        {
+          model: Facility,
+          attributes: [
+            "facility_id", "name", "type", "location", "capacity",
+            "image_url", "is_indoor", "description", "open_time", "close_time", "status"
+          ],
+        },
+      ],
+    });
+
+    if (!assignments || assignments.length === 0) {
+      return res.status(404).json({ message: "No facilities assigned to this staff member." });
+    }
+
+    // Return only the facilities
+    const facilities = assignments.map((a) => a.Facility);
+
+    return res.status(200).json(facilities);
+  } catch (error) {
+    console.error("Error fetching facilities by staff ID:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+exports.createFacilityRating = asyncHandler(async (req, res) => {
+  try {
+    const { facility_id, rating, comment, user_id } = req.body;
+
+    // Minimal creation - no validation
+    const newRating = await FacilityRating.create({
+      facility_id,
+      user_id: user_id || req.user?.user_id,
+      rating,
+      comment: comment || null
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: newRating,
+      message: "Rating submitted successfully"
+    });
+
+  } catch (error) {
+    console.error("RAW RATING CREATION ERROR:", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      original: error.original, // Sequelize specific
+      sql: error.sql // Sequelize SQL error
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create rating",
+      error: process.env.NODE_ENV === 'development' ? {
+        name: error.name,
+        message: error.message,
+        sqlError: error.original
+      } : undefined
+    });
+  }
+});
+
+exports.getRatingsByFacilityId = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const ratings = await FacilityRating.findAll({
+    where: { facility_id: id },
+    order: [["created_at", "DESC"]],
+  });
+
+  if (!ratings.length) {
+    return res.status(404).json({
+      success: false,
+      message: "No ratings found for this facility",
+    });
+  }
+
+  res.status(200).json(responseFormatter.success(ratings, "Ratings retrieved successfully"));
+});
+
+
+exports.getFacilityRatings = asyncHandler(async (req, res) => {
+  const ratings = await FacilityRating.findAll({
+    attributes: [
+      "facility_id",
+      [Sequelize.fn("AVG", Sequelize.col("rating")), "average_rating"],
+      [Sequelize.fn("COUNT", Sequelize.col("rating")), "total_ratings"]
+    ],
+    group: ["facility_id"],
+    include: [
+      {
+        model: Facility,
+        attributes: ["name", "type", "location"],
+      }
+    ],
+  });
+
+  res.status(200).json(responseFormatter.success(ratings, "Facility ratings summary retrieved successfully"));
+});
+
+
+module.exports = exports
