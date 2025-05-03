@@ -197,4 +197,6 @@ router.post("/:id/register", protect, isResident, eventController.registerForEve
  */
 router.put("/:id/cancel-registration", protect, isResident, eventController.cancelRegistration)
 
+router.get("/:id/status/:userID", protect, isResident, eventController.getRegistrationStatus)
+
 module.exports = router

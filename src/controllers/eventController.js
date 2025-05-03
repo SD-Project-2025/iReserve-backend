@@ -61,9 +61,14 @@ exports.getEvent = asyncHandler(async (req, res) => {
     })
   }
 
-  // Get registration count
+  // Get registration count (excluding cancelled registrations)
   const registrationCount = await EventRegistration.count({
-    where: { event_id: event.event_id },
+    where: { 
+      event_id: event.event_id,
+      status: {
+        [Op.not]: 'cancelled'
+      }
+    },
   })
 
   // Add registration count to event
@@ -270,34 +275,99 @@ exports.registerForEvent = asyncHandler(async (req, res) => {
 // @route   PUT /api/v1/events/:id/cancel-registration
 // @access  Private (Resident)
 exports.cancelRegistration = asyncHandler(async (req, res) => {
-  const event = await Event.findByPk(req.params.id)
+  const event = await Event.findByPk(req.params.id);
 
   if (!event) {
     return res.status(404).json({
       success: false,
       message: "Event not found",
-    })
+    });
   }
 
-  // Find registration
+  // Find registration (including cancelled ones)
   const registration = await EventRegistration.findOne({
     where: {
       event_id: event.event_id,
       resident_id: req.resident.resident_id,
     },
-  })
+  });
 
   if (!registration) {
-    return res.status(404).json({
+    return res.status(400).json({
       success: false,
-      message: "Registration not found",
-    })
+      message: "You are not registered for this event",
+    });
+  }
+
+  // Check if registration is already cancelled
+  if (registration.status === 'cancelled') {
+    return res.status(400).json({
+      success: false,
+      message: "Your registration is already cancelled",
+    });
   }
 
   // Update registration status
-  await registration.update({ status: "cancelled" })
+  await registration.update({ status: "cancelled" });
 
-  res.status(200).json(responseFormatter.success(null, "Event registration cancelled successfully"))
-})
+  res.status(200).json(responseFormatter.success(null, "Event registration cancelled successfully"));
+});
+
+// @desc    Check registration status for a specific event
+// @route   GET /api/v1/events/:id/status
+// @access  Private (Resident)
+exports.getRegistrationStatus = asyncHandler(async (req, res) => {
+  const { id, userID } = req.params;
+  
+  try {
+    const event = await Event.findByPk(id);
+    if (!event) {
+      return res.status(404).json(
+        responseFormatter.error(null, 'Event not found', 404)
+      );
+    }
+
+    const registration = await EventRegistration.findOne({
+      where: {
+        event_id: id,
+        resident_id: userID,
+      },
+    });
+
+    if (!registration) {
+      return res.status(200).json(
+        responseFormatter.success(
+          { 
+            isRegistered: false,
+            status: 'not_registered',
+            paymentStatus: null,
+            notes: null,
+            registrationDate: null
+          }, 
+          'Registration status retrieved successfully'
+        )
+      );
+    }
+
+    res.status(200).json(
+      responseFormatter.success(
+        { 
+          isRegistered: registration.status !== 'cancelled',
+          status: registration.status,
+          paymentStatus: registration.payment_status,
+          notes: registration.notes,
+          registrationDate: registration.registration_date
+        }, 
+        'Registration status retrieved successfully'
+      )
+    );
+  } catch (error) {
+    console.error('Error fetching registration status:', error);
+    res.status(500).json(
+      responseFormatter.error(null, 'Internal server error', 500)
+    );
+  }
+});
+
 
 module.exports = exports

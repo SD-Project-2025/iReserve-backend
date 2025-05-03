@@ -110,72 +110,36 @@ exports.getMaintenanceReport = asyncHandler(async (req, res) => {
 
 
 exports.createMaintenanceReport = asyncHandler(async (req, res) => {
-  const { facility_id, title, description, priority } = req.body;
+  const { facility_id, title, description, priority , userType, user_id } = req.body
 
-  // Validate required fields
-  if (!facility_id || !title || !description || !priority) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields (facility_id, title, description, priority)",
-    });
-  }
 
-  // Check if facility exists
-  const facility = await Facility.findByPk(facility_id);
+  const facility = await Facility.findByPk(facility_id)
   if (!facility) {
     return res.status(404).json({
       success: false,
       message: "Facility not found",
-    });
+    })
   }
 
-  // Prepare report data
+
   const reportData = {
     facility_id,
     title,
     description,
     priority,
     status: "reported",
-    reported_date: new Date(), // Automatically set the reported date
+    reported_date: new Date(),
+    reported_by_resident: userType === "resident" ? user_id : null,
+    reported_by_staff: userType === "staff" ? user_id : null,
+
   };
 
-  // Set reporter based on user type
-  switch (req.user.user_type) {
-    case "resident":
-      if (!req.user.resident_id) {
-        return res.status(400).json({
-          success: false,
-          message: "Resident ID not found in user data",
-        });
-      }
-      reportData.reported_by_resident = req.user.resident_id;
-      break;
 
-    case "staff":
-    case "admin": // Admins are treated as staff for reporting purposes
-      if (!req.user.staff_id) {
-        return res.status(400).json({
-          success: false,
-          message: "Staff ID not found in user data",
-        });
-      }
-      reportData.reported_by_staff = req.user.staff_id;
-      break;
+  const report = await MaintenanceReport.create(reportData)
 
-    default:
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized user type for creating reports",
-      });
-  }
+  res.status(201).json(responseFormatter.success(report, "Maintenance report created successfully"))
+})
 
-  // Create the report
-  const report = await MaintenanceReport.create(reportData);
-
-  res.status(201).json(
-    responseFormatter.success(report, "Maintenance report created successfully")
-  );
-});
 
 exports.updateMaintenanceStatus = asyncHandler(async (req, res) => {
   const { status, assigned_to, scheduled_date, feedback } = req.body
