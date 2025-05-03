@@ -46,24 +46,63 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
 
 
 exports.getMyMaintenanceReports = asyncHandler(async (req, res) => {
-  const reports = await MaintenanceReport.findAll({
-    where: { reported_by_resident: req.resident.resident_id },
-    include: [
-      {
-        model: Facility,
-        attributes: ["facility_id", "name", "type", "location"],
-      },
-      {
-        model: Staff,
-        as: "assignedStaff",
-        attributes: ["staff_id", "employee_id", "position"],
-      },
-    ],
-    order: [["reported_date", "DESC"]],
-  })
+  const { user_id, user_type } = req.user; // must be set by JWT auth middleware
 
-  res.status(200).json(responseFormatter.success(reports, "Your maintenance reports retrieved successfully"))
-})
+  let reports = [];
+
+  if (user_type === "resident") {
+    const resident = await Resident.findOne({ where: { user_id } });
+
+    if (!resident) {
+      return res.status(404).json(responseFormatter.error("Resident not found"));
+    }
+
+    reports = await MaintenanceReport.findAll({
+      where: { reported_by_resident: resident.resident_id },
+      include: [
+        {
+          model: Facility,
+          attributes: ["facility_id", "name", "type", "location"],
+        },
+        {
+          model: Staff,
+          as: "assignedStaff",
+          attributes: ["staff_id", "employee_id", "position"],
+        },
+      ],
+      order: [["reported_date", "DESC"]],
+    });
+
+  } else if (user_type === "staff") {
+    const staff = await Staff.findOne({ where: { user_id } });
+
+    if (!staff) {
+      return res.status(404).json(responseFormatter.error("Staff member not found"));
+    }
+
+    reports = await MaintenanceReport.findAll({
+      where: { reported_by_staff: staff.staff_id },
+      include: [
+        {
+          model: Facility,
+          attributes: ["facility_id", "name", "type", "location"],
+        },
+        {
+          model: Staff,
+          as: "assignedStaff",
+          attributes: ["staff_id", "employee_id", "position"],
+        },
+      ],
+      order: [["reported_date", "DESC"]],
+    });
+
+  } else {
+    return res.status(403).json(responseFormatter.error("Invalid user type"));
+  }
+
+  res.status(200).json(responseFormatter.success(reports, "Your maintenance reports retrieved successfully"));
+});
+
 
 
 exports.getMaintenanceReport = asyncHandler(async (req, res) => {

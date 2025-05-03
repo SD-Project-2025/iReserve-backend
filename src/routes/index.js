@@ -7,15 +7,18 @@ const bookingRoutes = require("./bookings")
 const maintenanceRoutes = require("./maintenance")
 const notificationRoutes = require("./notifications")
 const facilityRoutes = require("./facilities")
+//const emailRoutes = require("./emailNotifications")
 
 // Mount routes
 router.use("/auth", authRoutes)
 //Debugfig routes- may not work!!
+//router.use("email", emailRoutes)
 router.use("/events", eventsRoutes)
 router.use("/bookings", bookingRoutes)
 router.use("/facilities", facilityRoutes)
 router.use("/maintenance", maintenanceRoutes)
 router.use("/notifications", notificationRoutes)
+
 
 
 module.exports = router

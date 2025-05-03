@@ -8,7 +8,7 @@ const MaintenanceReport = require("./maintenanceReport")
 const Event = require("./event")
 const EventRegistration = require("./eventRegistration")
 const Notification = require("./notification")
-
+const Email = require("./Email")
 // Define additional associations if needed
 User.hasOne(Resident, { foreignKey: "user_id" })
 User.hasOne(Staff, { foreignKey: "user_id" })
@@ -45,4 +45,5 @@ module.exports = {
   Event,
   EventRegistration,
   Notification,
+  Email,
 }

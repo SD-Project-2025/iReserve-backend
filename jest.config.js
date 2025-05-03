@@ -4,10 +4,10 @@ module.exports = {
   collectCoverageFrom: ["src/**/*.js", "!src/config/swagger.js", "!src/utils/logger.js"],
   coverageThreshold: {
     global: {
-      branches: 10,
-      functions: 14,
-      lines: 20,
-      statements: 20,
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
     },
   },
   setupFilesAfterEnv: ["./tests/setup.js"],
