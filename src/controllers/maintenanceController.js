@@ -2,15 +2,30 @@ const { MaintenanceReport, Facility, Resident, Staff } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 
-
+// eslint-disable-next-line no-unused-vars
+const { subDays, startOfToday } = require("date-fns");
+const { Op } = require("sequelize");
+//const a = startOfToday()
+//console.log(a.toISOString().split("T")[0]) // YYYY-MM-DD format
 exports.getMaintenanceReports = asyncHandler(async (req, res) => {
-  const { status, priority, facility_id } = req.query
+  const { status, priority, facility_id } = req.query;
 
+  const today = startOfToday();
+  const fiveDaysAgo = subDays(today, 5);
 
-  const filter = {}
-  if (status) filter.status = status
-  if (priority) filter.priority = priority
-  if (facility_id) filter.facility_id = facility_id
+  const filter = {
+    [Op.or]: [
+      { status: { [Op.ne]: "completed" } },
+      {
+        status: "completed",
+        completion_date: { [Op.gte]: fiveDaysAgo },
+      },
+    ],
+  };
+
+  if (status) filter.status = status;
+  if (priority) filter.priority = priority;
+  if (facility_id) filter.facility_id = facility_id;
 
   const reports = await MaintenanceReport.findAll({
     where: filter,
@@ -39,12 +54,12 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
       ["priority", "DESC"],
       ["reported_date", "DESC"],
     ],
-  })
+  });
 
-  res.status(200).json(responseFormatter.success(reports, "Maintenance reports retrieved successfully"))
-})
-
-
+  res.status(200).json(
+    responseFormatter.success(reports, "Maintenance reports retrieved successfully")
+  );
+});
 exports.getMyMaintenanceReports = asyncHandler(async (req, res) => {
   const { user_id, user_type } = req.user; // must be set by JWT auth middleware
 

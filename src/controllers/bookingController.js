@@ -2,17 +2,22 @@ const { Booking, Facility, Resident, Staff } = require("../models");
 const asyncHandler = require("../utils/asyncHandler");
 const responseFormatter = require("../utils/responseFormatter");
 const { Op } = require("sequelize");
+//const { startOfToday } = require("date-fns");
 
 // @desc    Get all bookings
 // @route   GET /api/v1/bookings
 // @access  Private (Admin/Staff)
 exports.getBookings = asyncHandler(async (req, res) => {
-  const { status, facility_id, date } = req.query;
+  const { status, facility_id } = req.query;
 
-  const filter = {};
+  const filter = {
+    date: {
+      [Op.gte]: new Date().toISOString().split("T")[0], // Gets today's date in YYYY-MM-DD
+    },
+  };
+
   if (status) filter.status = status;
   if (facility_id) filter.facility_id = facility_id;
-  if (date) filter.date = date;
 
   const bookings = await Booking.findAll({
     where: filter,
@@ -32,8 +37,8 @@ exports.getBookings = asyncHandler(async (req, res) => {
       },
     ],
     order: [
-      ["date", "DESC"],
-      ["start_time", "ASC"],
+      ["date", "ASC"],         // Closest date first
+      ["start_time", "ASC"],   // Then by start time
     ],
   });
 
@@ -41,7 +46,6 @@ exports.getBookings = asyncHandler(async (req, res) => {
     .status(200)
     .json(responseFormatter.success(bookings, "Bookings retrieved successfully"));
 });
-
 // @desc    Get bookings for a resident
 // @route   GET /api/v1/bookings/my-bookings
 // @access  Private (Resident)

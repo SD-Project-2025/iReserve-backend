@@ -7,12 +7,18 @@ const { Op } = require('sequelize');
 // @route   GET /api/v1/events
 // @access  Public
 exports.getEvents = asyncHandler(async (req, res) => {
-  const { status, facility_id } = req.query
+  const { status, facility_id } = req.query;
 
   // Build filter object
-  const filter = {}
-  if (status) filter.status = status
-  if (facility_id) filter.facility_id = facility_id
+  const filter = {};
+  if (status) {
+    filter.status = status;
+  } else {
+    // Exclude events with status "completed" if no status filter is provided
+    filter.status = { [Op.not]: "completed" };
+  }
+
+  if (facility_id) filter.facility_id = facility_id;
 
   const events = await Event.findAll({
     where: filter,
@@ -31,11 +37,12 @@ exports.getEvents = asyncHandler(async (req, res) => {
       ["start_date", "ASC"],
       ["start_time", "ASC"],
     ],
-  })
+  });
 
-  res.status(200).json(responseFormatter.success(events, "Events retrieved successfully"))
-})
-
+  res
+    .status(200)
+    .json(responseFormatter.success(events, "Events retrieved successfully"));
+});
 // @desc    Get single event
 // @route   GET /api/v1/events/:id
 // @access  Public
