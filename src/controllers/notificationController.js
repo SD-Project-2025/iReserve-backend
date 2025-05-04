@@ -90,4 +90,35 @@ exports.deleteNotification = asyncHandler(async (req, res) => {
   res.status(200).json(responseFormatter.success(null, "Notification deleted successfully"))
 })
 
+exports.createNotification = asyncHandler(async (req, res) => {
+  const {
+    title,
+    message,
+    type,
+    related_id,
+    related_type,
+  } = req.body
+
+  if (!title || !message || !type) {
+    return res.status(400).json({
+      success: false,
+      message: "Title, message, and type are required",
+    })
+  }
+
+  const notification = await Notification.create({
+    user_id: req.user.user_id, // assumes user is authenticated
+    title,
+    message,
+    type,
+    related_id,
+    related_type,
+    created_at: new Date(),
+  })
+
+  res.status(201).json(
+    responseFormatter.success(notification, "Notification created successfully")
+  )
+})
+
 module.exports = exports

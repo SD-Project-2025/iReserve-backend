@@ -95,4 +95,6 @@ router.put("/read-all", protect, notificationController.markAllAsRead)
  */
 router.delete("/:id", protect, notificationController.deleteNotification)
 
+router.post("/", protect, notificationController.createNotification)
+
 module.exports = router
