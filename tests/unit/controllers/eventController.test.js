@@ -1,6 +1,6 @@
 const eventController = require('../../../src/controllers/eventController');
 const { Event, Facility, Staff, EventRegistration } = require('../../../src/models');
-
+const { Op } = require("sequelize");
 // Mock the models
 jest.mock('../../../src/models', () => {
   const originalModule = jest.requireActual('../../../src/models');
