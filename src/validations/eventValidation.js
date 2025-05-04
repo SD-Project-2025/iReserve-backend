@@ -20,7 +20,7 @@ exports.createEventSchema = Joi.object({
   fee: Joi.number().min(0).default(0),
 })
 
-// Update event validation,Basic validation to avoid errors,with requests
+// Update event validation,Basic validation to avoid errors,with requests --
 exports.updateEventSchema = Joi.object({
   title: Joi.string().min(5).max(100),
   description: Joi.string().min(10),
