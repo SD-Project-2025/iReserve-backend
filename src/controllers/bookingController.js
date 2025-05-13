@@ -2,6 +2,7 @@ const { Booking, Facility, Resident, Staff } = require("../models");
 const asyncHandler = require("../utils/asyncHandler");
 const responseFormatter = require("../utils/responseFormatter");
 const { Op } = require("sequelize");
+const encryptionService = require("../services/encryptionService");
 //const { startOfToday } = require("date-fns");
 
 // @desc    Get all bookings
@@ -12,7 +13,7 @@ exports.getBookings = asyncHandler(async (req, res) => {
 
   const filter = {
     date: {
-      [Op.gte]: new Date().toISOString().split("T")[0], // Gets today's date in YYYY-MM-DD
+      [Op.gte]: new Date().toISOString().split("T")[0],
     },
   };
 
@@ -28,23 +29,62 @@ exports.getBookings = asyncHandler(async (req, res) => {
       },
       {
         model: Resident,
-        attributes: ["resident_id"],
+        attributes: ["resident_id", "name"], // Include name field for decryption
       },
       {
         model: Staff,
         as: "approver",
-        attributes: ["staff_id", "employee_id"],
+        attributes: ["staff_id", "employee_id", "name", "email"],
       },
     ],
     order: [
-      ["date", "ASC"],         // Closest date first
-      ["start_time", "ASC"],   // Then by start time
+      ["date", "ASC"],
+      ["start_time", "ASC"],
     ],
   });
 
-  res
-    .status(200)
-    .json(responseFormatter.success(bookings, "Bookings retrieved successfully"));
+  // Add safe decryption helper
+  const safeDecrypt = (encryptedValue) => {
+    if (!encryptedValue) return null;
+    try {
+      return encryptionService.decrypt(encryptedValue);
+    } catch (error) {
+      console.error("Decryption error:", error.message);
+      return null;
+    }
+  };
+
+  const processedBookings = bookings.map(booking => {
+    const bookingData = booking.get({ plain: true });
+
+    // Extract and decrypt resident information
+    let residentName = null;
+    if (bookingData.Resident) {
+      residentName = safeDecrypt(bookingData.Resident.name);
+      delete bookingData.Resident; // Remove raw resident data
+    }
+
+    // Decrypt approver information if exists
+    if (bookingData.approver) {
+      bookingData.approver = {
+        ...bookingData.approver,
+        name: safeDecrypt(bookingData.approver.name),
+        email: safeDecrypt(bookingData.approver.email)
+      };
+    }
+
+    return {
+      ...bookingData,
+      resident_name: residentName,
+    };
+  });
+
+  res.status(200).json(
+    responseFormatter.success(
+      processedBookings,
+      "Bookings retrieved successfully"
+    )
+  );
 });
 // @desc    Get bookings for a resident
 // @route   GET /api/v1/bookings/my-bookings

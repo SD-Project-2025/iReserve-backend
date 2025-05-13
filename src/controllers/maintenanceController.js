@@ -1,12 +1,13 @@
 const { MaintenanceReport, Facility, Resident, Staff } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
-
+const encryptionService = require("../services/encryptionService");
 // eslint-disable-next-line no-unused-vars
 const { subDays, startOfToday } = require("date-fns");
 const { Op } = require("sequelize");
 //const a = startOfToday()
 //console.log(a.toISOString().split("T")[0]) // YYYY-MM-DD format
+
 exports.getMaintenanceReports = asyncHandler(async (req, res) => {
   const { status, priority, facility_id } = req.query;
 
@@ -37,17 +38,17 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
       {
         model: Resident,
         as: "residentReporter",
-        attributes: ["resident_id"],
+        attributes: ["resident_id", "name", "email"],
       },
       {
         model: Staff,
         as: "staffReporter",
-        attributes: ["staff_id", "employee_id"],
+        attributes: ["staff_id", "employee_id", "name", "email"],
       },
       {
         model: Staff,
         as: "assignedStaff",
-        attributes: ["staff_id", "employee_id", "position"],
+        attributes: ["staff_id", "employee_id", "position", "name", "email"],
       },
     ],
     order: [
@@ -56,8 +57,62 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
     ],
   });
 
+  // Safe decryption helper with enhanced error handling
+  const safeDecrypt = (encryptedValue) => {
+    if (!encryptedValue) return null;
+    try {
+      return encryptionService.decrypt(encryptedValue);
+    } catch (error) {
+      console.error("Decryption failed for value:", encryptedValue);
+      console.error("Decryption error:", error.message);
+      return null;
+    }
+  };
+
+  const processedReports = reports.map(report => {
+    const reportData = report.get({ plain: true });
+
+    // Process reporter information
+    let reporter = null;
+    if (reportData.residentReporter) {
+      reporter = {
+        type: "resident",
+        id: reportData.residentReporter.resident_id,
+        name: safeDecrypt(reportData.residentReporter.name),
+        email: safeDecrypt(reportData.residentReporter.email)
+      };
+      delete reportData.residentReporter;
+    } else if (reportData.staffReporter) {
+      reporter = {
+        type: "staff",
+        id: reportData.staffReporter.staff_id,
+        employee_id: reportData.staffReporter.employee_id,
+        name: safeDecrypt(reportData.staffReporter.name),
+        email: safeDecrypt(reportData.staffReporter.email)
+      };
+      delete reportData.staffReporter;
+    }
+
+    // Process assigned staff
+    if (reportData.assignedStaff) {
+      reportData.assignedStaff = {
+        ...reportData.assignedStaff,
+        name: safeDecrypt(reportData.assignedStaff.name),
+        email: safeDecrypt(reportData.assignedStaff.email)
+      };
+    }
+
+    return {
+      ...reportData,
+      reporter,
+    };
+  });
+
   res.status(200).json(
-    responseFormatter.success(reports, "Maintenance reports retrieved successfully")
+    responseFormatter.success(
+      processedReports,
+      "Maintenance reports retrieved successfully"
+    )
   );
 });
 exports.getMyMaintenanceReports = asyncHandler(async (req, res) => {
