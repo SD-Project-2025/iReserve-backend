@@ -55,7 +55,13 @@ exports.googleAuthCallback = asyncHandler(async (req, res) => {
       try {
         const stateData = JSON.parse(Buffer.from(state, "base64").toString());
         userType = stateData.userType || "resident";
-      } catch (err) {}
+      } catch (err) {
+        console.error("Error parsing state data:", err);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid state data",
+        });
+      }
     }
 
     let user = await User.findOne({ where: { google_id: googleId } });
@@ -227,13 +233,12 @@ exports.getMe = asyncHandler(async (req, res) => {
     profile = await Staff.findOne({ where: { user_id: user.user_id } })
   }
 
-  // Sanitize profile data
+  
   let sanitizedProfile = {}
   if (profile) {
-    // Create plain object from sequelize model
+    
     sanitizedProfile = profile.get({ plain: true })
     
-    // Decrypt and replace encrypted fields
     if (sanitizedProfile.name) {
       sanitizedProfile.name = encryptionService.decrypt(sanitizedProfile.name)
     }
@@ -242,7 +247,7 @@ exports.getMe = asyncHandler(async (req, res) => {
     }
   }
 
-  // Get user info from Google (for picture)
+  
   const googleUser = req.googleUser
 
   res.status(200).json(
