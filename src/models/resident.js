@@ -65,6 +65,14 @@ const Resident = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     tableName: "residents",

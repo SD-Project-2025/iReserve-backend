@@ -66,6 +66,14 @@ const Staff = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     tableName: "staff",
