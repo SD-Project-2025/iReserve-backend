@@ -258,8 +258,6 @@ router.get("/staff/:staff_id", protect, isStaff, facilityController.getFacilitie
 
 // Existing routes...
 router.post("/ratings", facilityController.createFacilityRating); // POST a new rating
-router.get("/:id/ratings", facilityController.getRatingsByFacilityId); // GET all ratings for a facility
-router.get("/ratings", facilityController.getFacilityRatings); // GET average ratings summary
 
 
 

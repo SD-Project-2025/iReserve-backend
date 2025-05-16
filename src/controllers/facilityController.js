@@ -1,4 +1,4 @@
-const { Facility, StaffFacilityAssignment, Staff, FacilityRating } = require("../models")
+const { Facility, StaffFacilityAssignment, Staff, FacilityRating, User } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Sequelize } = require("sequelize")
@@ -7,7 +7,6 @@ const { Sequelize } = require("sequelize")
 exports.getFacilities = asyncHandler(async (req, res) => {
   const { type, status, isIndoor } = req.query
 
-  
   const filter = {}
   if (type) filter.type = type
   if (status) filter.status = status
@@ -16,6 +15,17 @@ exports.getFacilities = asyncHandler(async (req, res) => {
   const facilities = await Facility.findAll({
     where: filter,
     order: [["name", "ASC"]],
+    include: [{
+      model: FacilityRating,
+      attributes: [],
+    }],
+    attributes: {
+      include: [
+        [Sequelize.fn('AVG', Sequelize.col('FacilityRatings.rating')), 'average_rating'],
+        [Sequelize.fn('COUNT', Sequelize.col('FacilityRatings.rating_id')), 'rating_count']
+      ]
+    },
+    group: ['Facility.facility_id']
   })
 
   res.status(200).json(responseFormatter.success(facilities, "Facilities retrieved successfully"))
@@ -23,17 +33,43 @@ exports.getFacilities = asyncHandler(async (req, res) => {
 
 
 exports.getFacility = asyncHandler(async (req, res) => {
-  const facility = await Facility.findByPk(req.params.id)
+  const facility = await Facility.findByPk(req.params.id, {
+    include: [{
+      model: FacilityRating,
+      attributes: ['rating_id', 'facility_id', 'user_id', 'rating', 'comment', 'created_at']
+    }]
+  });
 
   if (!facility) {
     return res.status(404).json({
       success: false,
       message: "Facility not found",
-    })
+    });
   }
 
-  res.status(200).json(responseFormatter.success(facility, "Facility retrieved successfully"))
-})
+  // Calculate average rating
+  const ratings = facility.FacilityRatings || [];
+  const averageRating = ratings.length > 0 
+    ? parseFloat((ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length).toFixed(2))
+    : null;
+
+  const response = {
+    ...facility.get({ plain: true }),
+    average_rating: averageRating,
+    rating_count: ratings.length,
+    ratings: ratings.map(rating => ({
+      rating_id: rating.rating_id,
+      facility_id: rating.facility_id,
+      user_id: rating.user_id,  // Still include user_id if needed for reference
+      rating: rating.rating,
+      comment: rating.comment,
+      created_at: rating.created_at
+    }))
+  };
+
+  res.status(200).json(responseFormatter.success(response, "Facility retrieved successfully"));
+});
+
 
 exports.createFacility = asyncHandler(async (req, res) => {
   const { name, type, location, capacity, image_url, is_indoor, description, open_time, close_time, status } = req.body
@@ -182,82 +218,86 @@ exports.getFacilitiesByStaffId = async (req, res) => {
   }
 };
 
-exports.createFacilityRating = asyncHandler(async (req, res) => {
-  try {
-    const { facility_id, rating, comment, user_id } = req.body;
 
-    // Minimal creation - no validation
-    const newRating = await FacilityRating.create({
-      facility_id,
-      user_id: user_id || req.user?.user_id,
-      rating,
-      comment: comment || null
+exports.createFacilityRating = asyncHandler(async (req, res) => {
+  const { facility_id, rating, comment, user_id } = req.body;
+
+  // Basic validation
+  if (isNaN(facility_id)) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Invalid facility ID" 
+    });
+  }
+
+  if (!user_id) {
+    return res.status(400).json({ 
+      success: false,
+      message: "User ID is required" 
+    });
+  }
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Rating must be between 1 and 5" 
+    });
+  }
+
+  try {
+    // Check for existing rating
+    const existingRating = await FacilityRating.findOne({
+      where: { facility_id, user_id }
     });
 
+    if (existingRating) {
+      // Update existing rating
+      existingRating.rating = rating;
+      existingRating.comment = comment;
+      await existingRating.save();
+
+      // Return success response for update
+      return res.status(200).json({
+        success: true,
+        data: {
+          rating_id: existingRating.rating_id,
+          rating: existingRating.rating,
+          comment: existingRating.comment,
+          updated_at: existingRating.updated_at
+        },
+        message: "Rating updated successfully"
+      });
+    }
+
+    // Create new rating if none exists
+    const newRating = await FacilityRating.create({
+      facility_id,
+      user_id,
+      rating,
+      comment
+    });
+
+    // Return success response for creation
     return res.status(201).json({
       success: true,
-      data: newRating,
+      data: {
+        rating_id: newRating.rating_id,
+        rating: newRating.rating,
+        comment: newRating.comment,
+        created_at: newRating.created_at
+      },
       message: "Rating submitted successfully"
     });
 
   } catch (error) {
-    console.error("RAW RATING CREATION ERROR:", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      original: error.original, // Sequelize specific
-      sql: error.sql // Sequelize SQL error
-    });
-    
-    return res.status(500).json({
+    console.error("Rating submission error:", error);
+    return res.status(500).json({ 
       success: false,
-      message: "Failed to create rating",
-      error: process.env.NODE_ENV === 'development' ? {
-        name: error.name,
-        message: error.message,
-        sqlError: error.original
-      } : undefined
+      message: "Internal server error" 
     });
   }
 });
 
-exports.getRatingsByFacilityId = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const ratings = await FacilityRating.findAll({
-    where: { facility_id: id },
-    order: [["created_at", "DESC"]],
-  });
-
-  if (!ratings.length) {
-    return res.status(404).json({
-      success: false,
-      message: "No ratings found for this facility",
-    });
-  }
-
-  res.status(200).json(responseFormatter.success(ratings, "Ratings retrieved successfully"));
-});
-
-
-exports.getFacilityRatings = asyncHandler(async (req, res) => {
-  const ratings = await FacilityRating.findAll({
-    attributes: [
-      "facility_id",
-      [Sequelize.fn("AVG", Sequelize.col("rating")), "average_rating"],
-      [Sequelize.fn("COUNT", Sequelize.col("rating")), "total_ratings"]
-    ],
-    group: ["facility_id"],
-    include: [
-      {
-        model: Facility,
-        attributes: ["name", "type", "location"],
-      }
-    ],
-  });
-
-  res.status(200).json(responseFormatter.success(ratings, "Facility ratings summary retrieved successfully"));
-});
 
 
 module.exports = exports

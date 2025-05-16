@@ -9,6 +9,7 @@ const Event = require("./event")
 const EventRegistration = require("./eventRegistration")
 const Notification = require("./notification")
 const Email = require("./Email")
+const FacilityRating = require("./FacilityRating");
 // Define additional associations if needed
 User.hasOne(Resident, { foreignKey: "user_id" })
 User.hasOne(Staff, { foreignKey: "user_id" })
@@ -34,6 +35,12 @@ Resident.hasMany(EventRegistration, { foreignKey: "resident_id" })
 
 User.hasMany(Notification, { foreignKey: "user_id" })
 
+// Add FacilityRating associations
+Facility.hasMany(FacilityRating, { foreignKey: "facility_id" });
+User.hasMany(FacilityRating, { foreignKey: "user_id" });
+FacilityRating.belongsTo(Facility, { foreignKey: "facility_id" });
+FacilityRating.belongsTo(User, { foreignKey: "user_id" });
+
 module.exports = {
   User,
   Resident,
@@ -46,4 +53,5 @@ module.exports = {
   EventRegistration,
   Notification,
   Email,
+  FacilityRating,
 }
