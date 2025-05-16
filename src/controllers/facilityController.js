@@ -1,4 +1,4 @@
-const { Facility, StaffFacilityAssignment, Staff, FacilityRating, User } = require("../models")
+const { Facility, StaffFacilityAssignment, Staff, FacilityRating } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Sequelize } = require("sequelize")
