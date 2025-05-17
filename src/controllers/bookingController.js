@@ -1,4 +1,4 @@
-const { Booking, Facility, Resident, Staff } = require("../models");
+const { Booking, Facility, Resident, Staff, StaffFacilityAssignment } = require("../models");
 const asyncHandler = require("../utils/asyncHandler");
 const responseFormatter = require("../utils/responseFormatter");
 const { Op } = require("sequelize");
@@ -10,13 +10,40 @@ const encryptionService = require("../services/encryptionService");
 // @access  Private (Admin/Staff)
 exports.getBookings = asyncHandler(async (req, res) => {
   const { status, facility_id } = req.query;
-
   const filter = {
     date: {
       [Op.gte]: new Date().toISOString().split("T")[0],
     },
   };
 
+  // Handle staff permissions
+  if (req.user.user_type === 'staff' && !req.staff.is_admin) {
+    try {
+      // Check if assignment model exists
+      const assignments = await StaffFacilityAssignment.findAll({
+        where: { staff_id: req.staff.staff_id },
+        attributes: ['facility_id']
+      });
+      
+      const assignedFacilityIds = assignments.map(a => a.facility_id);
+      
+      if (assignedFacilityIds.length > 0) {
+        filter.facility_id = { [Op.in]: assignedFacilityIds };
+      } else {
+        return res.status(200).json(
+          responseFormatter.success([], "No bookings found - you are not assigned to any facilities")
+        );
+      }
+    } catch (error) {
+      // If assignment system not implemented, return no bookings
+      console.error("Error fetching assignments:", error.message);
+      return res.status(200).json(
+        responseFormatter.success([error.message], "No bookings available for staff management")
+      );
+    }
+  }
+
+  // Apply existing filters
   if (status) filter.status = status;
   if (facility_id) filter.facility_id = facility_id;
 
@@ -29,7 +56,7 @@ exports.getBookings = asyncHandler(async (req, res) => {
       },
       {
         model: Resident,
-        attributes: ["resident_id", "name"], // Include name field for decryption
+        attributes: ["resident_id", "name"],
       },
       {
         model: Staff,
@@ -43,7 +70,7 @@ exports.getBookings = asyncHandler(async (req, res) => {
     ],
   });
 
-  // Add safe decryption helper
+  // Existing processing logic remains unchanged
   const safeDecrypt = (encryptedValue) => {
     if (!encryptedValue) return null;
     try {
@@ -57,14 +84,12 @@ exports.getBookings = asyncHandler(async (req, res) => {
   const processedBookings = bookings.map(booking => {
     const bookingData = booking.get({ plain: true });
 
-    // Extract and decrypt resident information
     let residentName = null;
     if (bookingData.Resident) {
       residentName = safeDecrypt(bookingData.Resident.name);
-      delete bookingData.Resident; // Remove raw resident data
+      delete bookingData.Resident;
     }
 
-    // Decrypt approver information if exists
     if (bookingData.approver) {
       bookingData.approver = {
         ...bookingData.approver,

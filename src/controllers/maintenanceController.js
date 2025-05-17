@@ -1,4 +1,4 @@
-const { MaintenanceReport, Facility, Resident, Staff } = require("../models")
+const { MaintenanceReport, Facility, Resident, Staff,StaffFacilityAssignment } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const encryptionService = require("../services/encryptionService");
@@ -10,7 +10,6 @@ const { Op } = require("sequelize");
 
 exports.getMaintenanceReports = asyncHandler(async (req, res) => {
   const { status, priority, facility_id } = req.query;
-
   const today = startOfToday();
   const fiveDaysAgo = subDays(today, 5);
 
@@ -24,9 +23,48 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
     ],
   };
 
+  // Handle staff permissions (non-admin)
+  if (req.user?.user_type === 'staff' && !req.staff?.is_admin) {
+    try {
+      // Get staff's assigned facilities
+      const assignments = await StaffFacilityAssignment.findAll({
+        where: { staff_id: req.staff.staff_id },
+        attributes: ['facility_id']
+      });
+
+      const assignedFacilityIds = assignments.map(a => a.facility_id);
+      
+      if (assignedFacilityIds.length > 0) {
+        filter.facility_id = { [Op.in]: assignedFacilityIds };
+      } else {
+        return res.status(200).json(
+          responseFormatter.success([], "No maintenance reports found - you are not assigned to any facilities")
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching assignments:", error.message);
+      return res.status(200).json(
+        responseFormatter.success([], "No maintenance reports available for your assignments")
+      );
+    }
+  }
+
+  // Apply existing filters
   if (status) filter.status = status;
   if (priority) filter.priority = priority;
-  if (facility_id) filter.facility_id = facility_id;
+  if (facility_id) {
+    if (filter.facility_id) {
+      // Combine with existing facility filter from assignments
+      filter.facility_id = { 
+        [Op.and]: [
+          { [Op.in]: filter.facility_id[Op.in] },
+          facility_id 
+        ]
+      };
+    } else {
+      filter.facility_id = facility_id;
+    }
+  }
 
   const reports = await MaintenanceReport.findAll({
     where: filter,
@@ -57,13 +95,12 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
     ],
   });
 
-  // Safe decryption helper with enhanced error handling
+  // Existing processing logic remains unchanged
   const safeDecrypt = (encryptedValue) => {
     if (!encryptedValue) return null;
     try {
       return encryptionService.decrypt(encryptedValue);
     } catch (error) {
-      console.error("Decryption failed for value:", encryptedValue);
       console.error("Decryption error:", error.message);
       return null;
     }
@@ -72,7 +109,6 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
   const processedReports = reports.map(report => {
     const reportData = report.get({ plain: true });
 
-    // Process reporter information
     let reporter = null;
     if (reportData.residentReporter) {
       reporter = {
@@ -93,7 +129,6 @@ exports.getMaintenanceReports = asyncHandler(async (req, res) => {
       delete reportData.staffReporter;
     }
 
-    // Process assigned staff
     if (reportData.assignedStaff) {
       reportData.assignedStaff = {
         ...reportData.assignedStaff,
