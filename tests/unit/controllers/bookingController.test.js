@@ -3,7 +3,6 @@ const bookingController = require('../../../src/controllers/bookingController')
 const { Booking, Facility, StaffFacilityAssignment } = require('../../../src/models');
 const responseFormatter = require('../../../src/utils/responseFormatter');
 const encryptionService = require('../../../src/services/encryptionService');
-const { Op } = require("sequelize");
 
 // Mocks
 jest.mock('../../../src/models');

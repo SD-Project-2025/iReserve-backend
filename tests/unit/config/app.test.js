@@ -1,5 +1,4 @@
 const request = require('supertest');
-const swaggerUi = require('swagger-ui-express');
 const errorHandler = require('../../../src/middleware/errorHandler');
 const app = require('../../../src/app');
 
@@ -32,7 +31,7 @@ describe('Express App Configuration', () => {
   });
 
   it('should apply rate limiting on /api', async () => {
-    const rateLimit = require('express-rate-limit');
+    
 
     // Re-mock rateLimit for this test only
     jest.resetModules();
