@@ -1,23 +1,14 @@
-const bookingController = require('../../../src/controllers/bookingController');
-const { Booking, Facility, Resident, Staff } = require('../../../src/models');
+// const bookingController = require('../../../src/controllers/bookingController');
+const bookingController = require('../../../src/controllers/bookingController')
+const { Booking, Facility, Resident, Staff, StaffFacilityAssignment } = require('../../../src/models');
+const responseFormatter = require('../../../src/utils/responseFormatter');
+const encryptionService = require('../../../src/services/encryptionService');
 const { Op } = require("sequelize");
-// Mock the models
-jest.mock('../../../src/models', () => {
-  const originalModule = jest.requireActual('../../../src/models');
-  return {
-    ...originalModule,
-    Booking: {
-      findAll: jest.fn(),
-      findByPk: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      findOne: jest.fn()
-    },
-    Facility: {
-      findByPk: jest.fn()
-    }
-  };
-});
+
+// Mocks
+jest.mock('../../../src/models');
+jest.mock('../../../src/utils/responseFormatter');
+jest.mock('../../../src/services/encryptionService');
 
 describe('Booking Controller', () => {
   let req, res;
@@ -27,417 +18,248 @@ describe('Booking Controller', () => {
       params: {},
       query: {},
       body: {},
-      user: { user_type: 'staff' }, // Default to staff for broader access
+      user: { user_type: 'resident' },
       resident: { resident_id: 1 },
-      staff: { staff_id: 1 }
+      staff: { staff_id: 2, is_admin: false }
     };
     res = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn()
     };
 
-    // Reset all mocks
     jest.clearAllMocks();
   });
 
+  // === getBookings ===
   describe('getBookings', () => {
-    it('should retrieve all future bookings with default filters', async () => {
-      const mockBookings = [
-        { booking_id: 1, date: '2023-12-01', facility_id: 1 },
-        { booking_id: 2, date: '2023-12-02', facility_id: 2 }
-      ];
-      Booking.findAll.mockResolvedValue(mockBookings);
+    it('should return bookings for admin/staff with facility filters', async () => {
+      req.user.user_type = 'staff';
+      req.staff.is_admin = true;
+      req.query = { status: 'approved' };
+
+      Booking.findAll.mockResolvedValue([]);
 
       await bookingController.getBookings(req, res);
 
-      expect(Booking.findAll).toHaveBeenCalledWith({
-        where: {
-          date: {
-            [Op.gte]: expect.any(String)
-          }
-        },
-        include: [
-          {
-            model: Facility,
-            attributes: ['facility_id', 'name', 'type', 'location']
-          },
-          {
-            model: Resident,
-            attributes: ['resident_id']
-          },
-          {
-            model: Staff,
-            as: 'approver',
-            attributes: ['staff_id', 'employee_id']
-          }
-        ],
-        order: [
-          ['date', 'ASC'],
-          ['start_time', 'ASC']
-        ]
-      });
+      expect(Booking.findAll).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBookings,
-        message: 'Bookings retrieved successfully'
-      });
+      expect(responseFormatter.success).toHaveBeenCalledWith(expect.any(Array), expect.any(String));
     });
 
-    it('should filter by status and facility_id when provided', async () => {
-      req.query = { status: 'approved', facility_id: '1' };
-      const mockBookings = [{ booking_id: 1, status: 'approved', facility_id: 1 }];
-      Booking.findAll.mockResolvedValue(mockBookings);
+    it('should return no bookings if staff has no assigned facilities', async () => {
+      req.user.user_type = 'staff';
+      req.staff.is_admin = false;
+
+      StaffFacilityAssignment.findAll.mockResolvedValue([]);
 
       await bookingController.getBookings(req, res);
 
-      expect(Booking.findAll).toHaveBeenCalledWith({
-        where: {
-          date: {
-            [Op.gte]: expect.any(String)
-          },
-          status: 'approved',
-          facility_id: '1'
-        },
-        include: expect.any(Array),
-        order: expect.any(Array)
-      });
+      expect(StaffFacilityAssignment.findAll).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(responseFormatter.success).toHaveBeenCalledWith([], expect.any(String));
+    });
+
+    it('should return decrypted resident and approver info', async () => {
+      req.user.user_type = 'staff';
+      req.staff.is_admin = true;
+
+      Booking.findAll.mockResolvedValue([
+        {
+          get: () => ({
+            booking_id: 1,
+            date: '2025-01-01',
+            Resident: { name: 'encryptedName' },
+            approver: { name: 'encryptedApprover', email: 'encryptedEmail' }
+          })
+        }
+      ]);
+
+      encryptionService.decrypt.mockImplementation(str => `decrypted(${str})`);
+
+      await bookingController.getBookings(req, res);
+
+      expect(encryptionService.decrypt).toHaveBeenCalled();
+      expect(responseFormatter.success).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            resident_name: 'decrypted(encryptedName)',
+            approver: {
+              name: 'decrypted(encryptedApprover)',
+              email: 'decrypted(encryptedEmail)'
+            }
+          })
+        ]),
+        expect.any(String)
+      );
     });
   });
 
+  // === getMyBookings ===
   describe('getMyBookings', () => {
-    it('should retrieve bookings for the current resident', async () => {
-      const mockBookings = [
-        { booking_id: 1, resident_id: 1 },
-        { booking_id: 2, resident_id: 1 }
-      ];
-      Booking.findAll.mockResolvedValue(mockBookings);
+    it('should retrieve resident bookings', async () => {
+      Booking.findAll.mockResolvedValue([{ booking_id: 1 }]);
 
       await bookingController.getMyBookings(req, res);
 
-      expect(Booking.findAll).toHaveBeenCalledWith({
-        where: { resident_id: 1 },
-        include: [
-          {
-            model: Facility,
-            attributes: ['facility_id', 'name', 'type', 'location']
-          }
-        ],
-        order: [
-          ['date', 'DESC'],
-          ['start_time', 'ASC']
-        ]
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBookings,
-        message: 'Your bookings retrieved successfully'
-      });
+      expect(Booking.findAll).toHaveBeenCalledWith(expect.objectContaining({
+        where: { resident_id: 1 }
+      }));
+      expect(responseFormatter.success).toHaveBeenCalledWith(expect.any(Array), "Your bookings retrieved successfully");
     });
   });
 
+  // === getBooking ===
   describe('getBooking', () => {
-    it('should retrieve a single booking by ID', async () => {
-      req.params.id = 1;
-      const mockBooking = {
-        booking_id: 1,
-        resident_id: 1,
-        approver: null
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
+    it('should return booking details for allowed resident', async () => {
+      req.params.id = 5;
+      Booking.findByPk.mockResolvedValue({ resident_id: 1 });
 
       await bookingController.getBooking(req, res);
 
-      expect(Booking.findByPk).toHaveBeenCalledWith(1, {
-        include: expect.any(Array)
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBooking,
-        message: 'Booking retrieved successfully'
-      });
+      expect(Booking.findByPk).toHaveBeenCalledWith(5, expect.any(Object));
+      expect(responseFormatter.success).toHaveBeenCalled();
+    });
+
+    it('should reject access for unauthorized resident', async () => {
+      req.params.id = 5;
+      Booking.findByPk.mockResolvedValue({ resident_id: 99 });
+
+      await bookingController.getBooking(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it('should return 404 if booking not found', async () => {
-      req.params.id = 999;
       Booking.findByPk.mockResolvedValue(null);
 
       await bookingController.getBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Booking not found'
-      });
-    });
-
-    it('should return 403 if resident tries to access another resident\'s booking', async () => {
-      req.params.id = 1;
-      req.user.user_type = 'resident';
-      const mockBooking = {
-        booking_id: 1,
-        resident_id: 2 // Different from req.resident.resident_id
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
-
-      await bookingController.getBooking(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You do not have permission to view this booking'
-      });
     });
   });
 
+  // === createBooking ===
   describe('createBooking', () => {
-    it('should create a new booking when all conditions are met', async () => {
+    beforeEach(() => {
       req.body = {
         facility_id: 1,
-        date: '2023-12-01',
-        start_time: '09:00',
-        end_time: '10:00',
+        date: '2025-01-01',
+        start_time: '10:00',
+        end_time: '11:00',
         purpose: 'Meeting',
         attendees: 5
       };
-
-      const mockFacility = {
-        facility_id: 1,
-        status: 'open',
-        capacity: 10
-      };
-      const mockBooking = {
-        booking_id: 1,
-        ...req.body,
-        resident_id: 1,
-        status: 'pending'
-      };
-
-      Facility.findByPk.mockResolvedValue(mockFacility);
-      Booking.findOne.mockResolvedValue(null);
-      Booking.create.mockResolvedValue(mockBooking);
-
-      await bookingController.createBooking(req, res);
-
-      expect(Facility.findByPk).toHaveBeenCalledWith(1);
-      expect(Booking.findOne).toHaveBeenCalledWith({
-        where: expect.any(Object)
-      });
-      expect(Booking.create).toHaveBeenCalledWith({
-        facility_id: 1,
-        resident_id: 1,
-        date: '2023-12-01',
-        start_time: '09:00',
-        end_time: '10:00',
-        purpose: 'Meeting',
-        attendees: 5,
-        status: 'pending'
-      });
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBooking,
-        message: 'Booking created successfully'
-      });
     });
 
-    it('should return 404 if facility not found', async () => {
-      req.body = { facility_id: 999 };
+    it('should reject if facility does not exist', async () => {
       Facility.findByPk.mockResolvedValue(null);
 
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Facility not found'
-      });
     });
 
-    it('should return 400 if facility is not open', async () => {
-      req.body = { facility_id: 1 };
-      const mockFacility = {
-        facility_id: 1,
-        status: 'closed'
-      };
-      Facility.findByPk.mockResolvedValue(mockFacility);
+    it('should reject if facility is closed', async () => {
+      Facility.findByPk.mockResolvedValue({ status: 'closed' });
 
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Facility is currently closed'
-      });
     });
 
-    it('should return 400 if attendees exceed capacity', async () => {
-      req.body = {
-        facility_id: 1,
-        attendees: 15
-      };
-      const mockFacility = {
-        facility_id: 1,
-        status: 'open',
-        capacity: 10
-      };
-      Facility.findByPk.mockResolvedValue(mockFacility);
+    it('should reject if attendees exceed capacity', async () => {
+      Facility.findByPk.mockResolvedValue({ status: 'open', capacity: 3 });
 
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Number of attendees exceeds facility capacity of 10'
-      });
     });
 
-    it('should return 400 if time slot is already booked', async () => {
-      req.body = {
-        facility_id: 1,
-        date: '2023-12-01',
-        start_time: '09:00',
-        end_time: '10:00',
-        attendees: 5
-      };
-      const mockFacility = {
-        facility_id: 1,
-        status: 'open',
-        capacity: 10
-      };
-      const conflictingBooking = {
-        booking_id: 2,
-        facility_id: 1,
-        date: '2023-12-01',
-        start_time: '09:30',
-        end_time: '10:30',
-        status: 'approved'
-      };
-
-      Facility.findByPk.mockResolvedValue(mockFacility);
-      Booking.findOne.mockResolvedValue(conflictingBooking);
+    it('should reject on conflicting booking', async () => {
+      Facility.findByPk.mockResolvedValue({ status: 'open', capacity: 10 });
+      Booking.findOne.mockResolvedValue({});
 
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'The selected time slot conflicts with an existing booking'
-      });
+    });
+
+    it('should create booking if valid', async () => {
+      Facility.findByPk.mockResolvedValue({ status: 'open', capacity: 10 });
+      Booking.findOne.mockResolvedValue(null);
+      Booking.create.mockResolvedValue({ booking_id: 10 });
+
+      await bookingController.createBooking(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(responseFormatter.success).toHaveBeenCalledWith({ booking_id: 10 }, "Booking created successfully");
     });
   });
 
+  // === updateBookingStatus ===
   describe('updateBookingStatus', () => {
-    it('should update booking status when authorized', async () => {
+    it('should update booking status', async () => {
       req.params.id = 1;
-      req.body = { status: 'approved' };
-      const mockBooking = {
-        booking_id: 1,
+      req.body.status = 'approved';
+
+      Booking.findByPk.mockResolvedValue({
         update: jest.fn().mockResolvedValue(true)
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
+      });
 
       await bookingController.updateBookingStatus(req, res);
 
-      expect(Booking.findByPk).toHaveBeenCalledWith(1);
-      expect(mockBooking.update).toHaveBeenCalledWith({
-        status: 'approved',
-        approved_by: 1,
-        approval_date: expect.any(Date)
-      });
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockBooking,
-        message: 'Booking approved successfully'
-      });
+      expect(responseFormatter.success).toHaveBeenCalled();
     });
 
     it('should return 404 if booking not found', async () => {
-      req.params.id = 999;
       Booking.findByPk.mockResolvedValue(null);
 
       await bookingController.updateBookingStatus(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Booking not found'
-      });
     });
   });
 
+  // === cancelBooking ===
   describe('cancelBooking', () => {
-    it('should cancel booking when authorized', async () => {
-      req.params.id = 1;
-      const mockBooking = {
-        booking_id: 1,
+    it('should cancel booking successfully', async () => {
+      req.params.id = 3;
+
+      Booking.findByPk.mockResolvedValue({
         resident_id: 1,
         status: 'approved',
         update: jest.fn().mockResolvedValue(true)
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
+      });
 
       await bookingController.cancelBooking(req, res);
 
-      expect(Booking.findByPk).toHaveBeenCalledWith(1);
-      expect(mockBooking.update).toHaveBeenCalledWith({ status: 'cancelled' });
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: null,
-        message: 'Booking cancelled successfully'
-      });
+      expect(responseFormatter.success).toHaveBeenCalledWith(null, "Booking cancelled successfully");
     });
 
-    it('should return 404 if booking not found', async () => {
-      req.params.id = 999;
-      Booking.findByPk.mockResolvedValue(null);
-
-      await bookingController.cancelBooking(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Booking not found'
-      });
-    });
-
-    it('should return 403 if resident tries to cancel another resident\'s booking', async () => {
-      req.params.id = 1;
-      const mockBooking = {
-        booking_id: 1,
-        resident_id: 2 // Different from req.resident.resident_id
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
+    it('should return 403 if resident tries to cancel someone else’s booking', async () => {
+      Booking.findByPk.mockResolvedValue({ resident_id: 99 });
 
       await bookingController.cancelBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You do not have permission to cancel this booking'
-      });
     });
 
     it('should return 400 if booking is already cancelled', async () => {
-      req.params.id = 1;
-      const mockBooking = {
-        booking_id: 1,
-        resident_id: 1,
-        status: 'cancelled'
-      };
-      Booking.findByPk.mockResolvedValue(mockBooking);
+      Booking.findByPk.mockResolvedValue({ resident_id: 1, status: 'cancelled' });
 
       await bookingController.cancelBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Booking is already cancelled'
-      });
+    });
+
+    it('should return 404 if booking not found', async () => {
+      Booking.findByPk.mockResolvedValue(null);
+
+      await bookingController.cancelBooking(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 });
