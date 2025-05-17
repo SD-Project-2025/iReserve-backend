@@ -1,6 +1,6 @@
 // const bookingController = require('../../../src/controllers/bookingController');
 const bookingController = require('../../../src/controllers/bookingController')
-const { Booking, Facility, Resident, Staff, StaffFacilityAssignment } = require('../../../src/models');
+const { Booking, Facility, StaffFacilityAssignment } = require('../../../src/models');
 const responseFormatter = require('../../../src/utils/responseFormatter');
 const encryptionService = require('../../../src/services/encryptionService');
 const { Op } = require("sequelize");
