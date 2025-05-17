@@ -1,8 +1,216 @@
-const { Event, Facility, Staff, EventRegistration } = require("../models")
+const crypto = require('crypto');
+const { Event, Facility, Staff, EventRegistration ,Resident} = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Op } = require('sequelize');
 const axios = require('axios');
+
+
+//initiate payment
+const generatePayfastSignature = (data, passPhrase = null) => {
+  // PayFast's required parameter order for signature calculation
+  const signatureOrder = [
+    'merchant_id', 'merchant_key', 'return_url', 'cancel_url', 'notify_url',
+    'm_payment_id', 'amount', 'item_name', 'item_description', 'custom_str1'
+  ];
+
+  let pfOutput = '';
+  
+  signatureOrder.forEach(key => {
+    if (data[key] !== undefined && data[key] !== '') {
+      const value = data[key].toString().trim();
+      pfOutput += `${key}=${encodeURIComponent(value).replace(/%20/g, '+')}&`;
+    }
+  });
+
+  // Remove trailing ampersand and add passphrase if exists
+  let getString = pfOutput.slice(0, -1);
+  if (passPhrase) {
+    getString += `&passphrase=${encodeURIComponent(passPhrase.trim())}`;
+  }
+
+  return crypto.createHash('md5').update(getString).digest('hex');
+};
+
+exports.initiatePayment = asyncHandler(async (req, res) => {
+  const event = await Event.findByPk(req.params.id);
+  if (!event) {
+    return res.status(404).json(responseFormatter.error("Event not found", 404));
+  }
+
+  // Validate required parameters
+  const { resident_id } = req.body;
+  if (!resident_id) {
+    return res.status(400).json(responseFormatter.error("Resident ID is required", 400));
+  }
+
+  // Validate fee structure
+  const amount = parseFloat(event.fee);
+  if (isNaN(amount) || amount <= 0) {
+    return res.status(400).json(responseFormatter.error("Invalid event fee configuration", 400));
+  }
+
+  // Validate resident exists
+  const resident = await Resident.findByPk(resident_id);
+  if (!resident) {
+    return res.status(404).json(responseFormatter.error("Resident not found", 404));
+  }
+
+  console.log(process.env.PAYFAST_MERCHANT_ID, process.env.PAYFAST_MERCHANT_KEY, process.env.PAYFAST_PASSPHRASE);
+
+  // Create payment data with proper formatting
+  const paymentData = {
+    merchant_id: process.env.PAYFAST_MERCHANT_ID,
+    merchant_key: process.env.PAYFAST_MERCHANT_KEY,
+    return_url: `${process.env.FRONTEND_URL}/payments/${event.event_id}/success`,
+    cancel_url: `${process.env.FRONTEND_URL}/payments/${event.event_id}/cancel`,
+    notify_url: `${process.env.API_URL}/events/${event.event_id}/payment-notify`,
+    m_payment_id: `EVENT-${event.event_id}-${Date.now()}`,
+    amount: amount.toFixed(2),
+    item_name: `Event Reg: ${event.title.substring(0, 95)}`,
+    item_description: `Registration for ${event.title.substring(0, 250)}`,
+    custom_str1: JSON.stringify({
+      event_id: event.event_id,
+      resident_id: resident_id,
+      timestamp: Date.now()
+    })
+  };
+
+  // Generate signature with proper parameter order
+  paymentData.signature = generatePayfastSignature(
+    paymentData, 
+    process.env.PAYFAST_PASSPHRASE
+  );
+
+  // Validate all required fields
+  const requiredFields = [
+    'merchant_id', 'merchant_key', 'return_url',
+    'cancel_url', 'notify_url', 'm_payment_id',
+    'amount', 'item_name', 'signature'
+  ];
+
+  for (const field of requiredFields) {
+    if (!paymentData[field]) {
+      return res.status(500).json(responseFormatter.error(`Missing required field: ${field}`, 500));
+    }
+  }
+
+  // Create URL with parameters in correct order
+  const params = new URLSearchParams();
+  const urlOrder = [
+    'merchant_id', 'merchant_key', 'return_url', 'cancel_url',
+    'notify_url', 'm_payment_id', 'amount', 'item_name',
+    'item_description', 'custom_str1', 'signature'
+  ];
+
+  urlOrder.forEach(key => {
+    if (paymentData[key]) {
+      params.append(key, paymentData[key]);
+    }
+  });
+
+  res.status(200).json(responseFormatter.success({
+    ...paymentData,
+    payment_url: `https://sandbox.payfast.co.za/eng/process?${params.toString()}`
+  }, "Payment initiated successfully"));
+});
+exports.handlePaymentNotification = asyncHandler(async (req, res) => {
+  const { event_id } = req.params;
+  const pfData = req.body;
+
+  // Verify signature
+  const signature = generatePayfastSignature(pfData, process.env.PAYFAST_PASSPHRASE);
+  if (signature !== pfData.signature) {
+    return res.status(400).send('Invalid signature');
+  }
+
+  // Get registration details from custom parameters
+  const { event_id: paymentEventId, resident_id } = JSON.parse(pfData.custom_str1);
+  
+  // Validate event ID matches route parameter
+  if (parseInt(paymentEventId) !== parseInt(event_id)) {
+    return res.status(400).send('Event ID mismatch');
+  }
+
+  // Check if payment was successful
+  if (pfData.payment_status === 'COMPLETE') {
+    // Check event capacity
+    const registrationCount = await EventRegistration.count({
+      where: { 
+        event_id: paymentEventId,
+        status: 'registered'
+      }
+    });
+
+    const event = await Event.findByPk(paymentEventId);
+    if (registrationCount >= event.capacity) {
+      // Initiate refund logic here
+      return res.status(400).send('Event is full');
+    }
+
+    // Create final registration
+    const registration = await EventRegistration.create({
+      event_id: paymentEventId,
+      resident_id,
+      status: 'registered',
+      payment_status: 'paid',
+      payment_date: new Date(),
+      payment_reference: pfData.pf_payment_id
+    });
+
+    return res.status(200).send('OK');
+  }
+
+  // Handle failed/cancelled payments
+  if (['CANCELLED', 'FAILED'].includes(pfData.payment_status)) {
+    // Optionally log failed attempts
+    return res.status(200).send('OK');
+  }
+
+  res.status(400).send('Unknown payment status');
+});
+exports.handlePaymentNotification = asyncHandler(async (req, res) => {
+  const { event_id } = req.params;
+  const pfData = req.body;
+
+  // Verify signature
+  const signature = generatePayfastSignature(pfData, process.env.PAYFAST_PASSPHRASE);
+  if (signature !== pfData.signature) {
+    return res.status(400).send('Invalid signature');
+  }
+
+  // Extract registration ID from payment ID
+  const [_, registrationId] = pfData.m_payment_id.split('-REG-');
+  const registration = await EventRegistration.findByPk(registrationId);
+  
+  if (!registration) {
+    return res.status(404).send('Registration not found');
+  }
+
+  // Update registration based on payment status
+  switch (pfData.payment_status) {
+    case 'COMPLETE':
+      await registration.update({
+        payment_status: 'paid',
+        payment_date: new Date(),
+        payment_reference: pfData.pf_payment_id
+      });
+      break;
+      
+    case 'CANCELLED':
+      await registration.update({
+        payment_status: 'cancelled',
+        status: 'cancelled'
+      });
+      break;
+      
+    default:
+      await registration.update({ payment_status: 'failed' });
+  }
+
+  res.status(200).send('OK');
+});
+
 
 // @desc    Get all events
 // @route   GET /api/v1/events
