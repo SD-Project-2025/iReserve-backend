@@ -114,60 +114,113 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
     payment_url: `https://sandbox.payfast.co.za/eng/process?${params.toString()}`
   }, "Payment initiated successfully"));
 });
+
+
+//const axios = require('axios');
+
 exports.handlePaymentNotification = asyncHandler(async (req, res) => {
-  const { event_id } = req.params;
-  const pfData = req.body;
+  try {
+    const { event_id } = req.params;
+    const pfData = req.body;
+event_id;
+    // 1. Verify signature
+    const generatedSignature = generatePayfastSignature(pfData, process.env.PAYFAST_PASSPHRASE);
+    if (generatedSignature !== pfData.signature) {
+      console.error('Signature mismatch:', {
+        received: pfData.signature,
+        generated: generatedSignature
+      });
+      return res.status(400).send('Invalid signature');
+    }
 
-  // Verify signature
-  const signature = generatePayfastSignature(pfData, process.env.PAYFAST_PASSPHRASE);
-  if (signature !== pfData.signature) {
-    return res.status(400).send('Invalid signature');
-  }
+    // 2. Parse custom data
+    let customData;
+    try {
+      customData = JSON.parse(pfData.custom_str1);
+    } catch (error) {
+      console.error('Error parsing custom_str1:', error);
+      return res.status(400).send('Invalid custom data');
+    }
 
-  // Get registration details from custom parameters
-  const { event_id: paymentEventId, resident_id } = JSON.parse(pfData.custom_str1);
-  
-  // Validate event ID matches route parameter
-  if (parseInt(paymentEventId) !== parseInt(event_id)) {
-    return res.status(400).send('Event ID mismatch');
-  }
-
-  // Check if payment was successful
-  if (pfData.payment_status === 'COMPLETE') {
-    // Check event capacity
-    const registrationCount = await EventRegistration.count({
-      where: { 
-        event_id: paymentEventId,
-        status: 'registered'
+    // 3. Find registration
+    const registration = await EventRegistration.findOne({
+      where: {
+        event_id: customData.event_id,
+        resident_id: customData.resident_id
       }
     });
 
-    const event = await Event.findByPk(paymentEventId);
-    if (registrationCount >= event.capacity) {
-      // Initiate refund logic here
-      return res.status(400).send('Event is full');
+    if (!registration) {
+      console.error('Registration not found:', customData);
+      return res.status(404).send('Registration not found');
     }
 
-    // Create final registration
-    const registration = await EventRegistration.create({
-      event_id: paymentEventId,
-      resident_id,
-      status: 'registered',
-      payment_status: 'paid',
-      payment_date: new Date(),
+    // 4. Update registration
+    const paymentStatusMap = {
+      'COMPLETE': { payment_status: 'paid', status: 'registered' },
+      'CANCELLED': { payment_status: 'cancelled', status: 'cancelled' },
+      'FAILED': { payment_status: 'failed', status: 'failed' }
+    };
+
+    const updateData = paymentStatusMap[pfData.payment_status] || { payment_status: 'unknown' };
+    
+    await registration.update({
+      ...updateData,
+      payment_date: pfData.payment_status === 'COMPLETE' ? new Date() : null,
       payment_reference: pfData.pf_payment_id
     });
 
-    return res.status(200).send('OK');
-  }
+    // 5. Send confirmation email for successful payments
+    if (pfData.payment_status === 'COMPLETE') {
+      try {
+        const resident = await Resident.findByPk(customData.resident_id);
+        const event = await Event.findByPk(customData.event_id);
 
-  // Handle failed/cancelled payments
-  if (['CANCELLED', 'FAILED'].includes(pfData.payment_status)) {
-    // Optionally log failed attempts
-    return res.status(200).send('OK');
-  }
+        if (!resident || !event) {
+          console.error('Missing data for email:', { resident, event });
+          return res.status(200).send('OK'); // Still acknowledge PayFast
+        }
 
-  res.status(400).send('Unknown payment status');
+        const emailPayload = {
+          client_name: resident.name,
+          client_email: resident.email,
+          recipient_email: resident.email,
+          subject: `Event Registration Confirmation: ${event.title}`,
+          message: `
+            <p>You have successfully registered for <strong>${event.title}</strong>.</p>
+            <p>Amount Paid: ZAR ${parseFloat(pfData.amount_gross).toFixed(2)}</p>
+            <p>Payment Date: ${new Date().toLocaleDateString('en-ZA', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}</p>
+            <p>Payment Reference: ${pfData.pf_payment_id}</p>
+          `
+        };
+
+        await axios.post(process.env.EMAIL_URL, emailPayload, {
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        console.log(`Email sent to ${resident.email}`);
+      } catch (emailError) {
+        console.error('Email sending failed:', {
+          error: emailError.response?.data || emailError.message,
+          resident_id: customData.resident_id
+        });
+      }
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Payment notification processing failed:', {
+      error: error.message,
+      body: req.body,
+      params: req.params
+    });
+    res.status(500).send('Internal server error');
+  }
 });
 exports.handlePaymentNotification = asyncHandler(async (req, res) => {
   const { event_id } = req.params;
@@ -178,9 +231,9 @@ exports.handlePaymentNotification = asyncHandler(async (req, res) => {
   if (signature !== pfData.signature) {
     return res.status(400).send('Invalid signature');
   }
-
+event_id;
   // Extract registration ID from payment ID
-  const [_, registrationId] = pfData.m_payment_id.split('-REG-');
+  const [registrationId] = pfData.m_payment_id.split('-REG-');
   const registration = await EventRegistration.findByPk(registrationId);
   
   if (!registration) {
