@@ -254,10 +254,12 @@ router.get("/:id/staff", protect, isStaff, facilityController.getAssignedStaff)
  *       500:
  *         description: Server error
  */
-router.get("/staff/:staff_id", protect, isStaff, facilityController.getFacilitiesByStaffId)
+router.get("/staff/:staff_id", facilityController.getFacilitiesByStaffId)
 
 // Existing routes...
-router.post("/ratings", facilityController.createFacilityRating); // POST a new rating
+router.post("/ratings", facilityController.createFacilityRating); // POST a new 
+
+router.get('/assigned', facilityController.getAssignedFacilities);
 
 
 

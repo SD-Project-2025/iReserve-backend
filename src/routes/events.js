@@ -199,4 +199,6 @@ router.put("/:id/cancel-registration", protect, isResident, eventController.canc
 
 router.get("/:id/status/:userID", protect, isResident, eventController.getRegistrationStatus)
 
+router.get("/staff/:staff_id/events", eventController.getEventsByStaffFacilities);
+
 module.exports = router

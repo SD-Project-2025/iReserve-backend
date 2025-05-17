@@ -2,6 +2,7 @@ const { Event, Facility, Staff, EventRegistration } = require("../models")
 const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Op } = require('sequelize');
+const axios = require('axios');
 
 // @desc    Get all events
 // @route   GET /api/v1/events
@@ -372,6 +373,69 @@ exports.getRegistrationStatus = asyncHandler(async (req, res) => {
     console.error('Error fetching registration status:', error);
     res.status(500).json(
       responseFormatter.error(null, 'Internal server error', 500)
+    );
+  }
+});
+
+exports.getEventsByStaffFacilities = asyncHandler(async (req, res) => {
+  const { staff_id } = req.params;
+  const { status } = req.query;
+  const apiUrl = process.env.API_URL || "http://localhost:5000/api/v1"
+
+  try {
+    // 1. Get assigned facilities from staff-facilities API
+    const facilitiesResponse = await axios.get(`${apiUrl}/facilities/staff/${staff_id}`);
+    
+    if (!facilitiesResponse.data || facilitiesResponse.data.length === 0) {
+      return res.status(200).json(
+        responseFormatter.success([], "No facilities assigned to this staff member")
+      );
+    }
+
+    // 2. Extract facility IDs
+    const facilityIds = facilitiesResponse.data.map(f => f.facility_id);
+
+    // 3. Build event filter
+    const eventFilter = {
+      facility_id: { [Op.in]: facilityIds }
+    };
+
+    // Add status filter if provided
+    if (status) {
+      eventFilter.status = status;
+    } else {
+      // Exclude completed events by default
+      eventFilter.status = { [Op.not]: "completed" };
+    }
+
+    // 4. Get events for these facilities
+    const events = await Event.findAll({
+      where: eventFilter,
+      include: [
+        {
+          model: Facility,
+          attributes: ["facility_id", "name", "type", "location"],
+        },
+        {
+          model: Staff,
+          as: "organizer",
+          attributes: ["staff_id", "employee_id", "position"],
+        },
+      ],
+      order: [
+        ["start_date", "ASC"],
+        ["start_time", "ASC"],
+      ],
+    });
+
+    return res.status(200).json(
+      responseFormatter.success(events, "Events retrieved successfully")
+    );
+
+  } catch (error) {
+    console.error("Error in getEventsByStaffFacilities:", error);
+    return res.status(500).json(
+      responseFormatter.error("Internal server error", error.message)
     );
   }
 });

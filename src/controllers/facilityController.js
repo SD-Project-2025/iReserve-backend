@@ -298,6 +298,63 @@ exports.createFacilityRating = asyncHandler(async (req, res) => {
   }
 });
 
+exports.getAssignedFacilities = asyncHandler(async (req, res) => {
+  const { type, status, isIndoor } = req.query;
+
+  try {
+    // Get all facility assignments with their associated facilities
+    const assignments = await StaffFacilityAssignment.findAll({
+      include: [
+        {
+          model: Facility,
+          where: {
+            ...(type && { type }),
+            ...(status && { status }),
+            ...(isIndoor !== undefined && { is_indoor: isIndoor === "true" })
+          },
+          include: [{
+            model: FacilityRating,
+            attributes: [],
+          }],
+          attributes: {
+            include: [
+              [Sequelize.fn('AVG', Sequelize.col('FacilityRatings.rating')), 'average_rating'],
+              [Sequelize.fn('COUNT', Sequelize.col('FacilityRatings.rating_id')), 'rating_count']
+            ]
+          },
+          group: ['Facility.facility_id']
+        }
+      ],
+      group: ['StaffFacilityAssignment.assignment_id']
+    });
+
+    if (!assignments || assignments.length === 0) {
+      return res.status(200).json(responseFormatter.success([], "No assigned facilities found"));
+    }
+
+    // Extract and format facilities with their ratings
+    const facilities = assignments.map(assignment => ({
+      ...assignment.Facility.get({ plain: true }),
+      average_rating: assignment.Facility.dataValues.average_rating,
+      rating_count: assignment.Facility.dataValues.rating_count
+    }));
+
+    // Remove duplicates (in case a facility has multiple staff assignments)
+    const uniqueFacilities = facilities.filter(
+      (facility, index, self) => 
+        index === self.findIndex(f => f.facility_id === facility.facility_id)
+    );
+
+    // Sort alphabetically by name
+    uniqueFacilities.sort((a, b) => a.name.localeCompare(b.name));
+
+    return res.status(200).json(responseFormatter.success(uniqueFacilities, "Assigned facilities retrieved successfully"));
+  } catch (error) {
+    console.error("Error fetching assigned facilities:", error);
+    return res.status(500).json(responseFormatter.error("Internal server error"));
+  }
+});
+
 
 
 module.exports = exports
