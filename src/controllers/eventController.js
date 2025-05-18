@@ -111,7 +111,7 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
 
   res.status(200).json(responseFormatter.success({
     ...paymentData,
-    payment_url: `https://sandbox.payfast.co.za/eng/process?${params.toString()}`
+    payment_url: `${process.env.PAYFAST_HOST}?${params.toString()}`
   }, "Payment initiated successfully"));
 });
 
