@@ -90,6 +90,13 @@ exports.googleAuthCallback = asyncHandler(async (req, res) => {
         });
       }
     } else {
+      if (user.status === "suspended") {
+        const frontendUrl = process.env.FRONTEND_URL
+        const redirectUrl = `${frontendUrl}/access/denied`
+
+        res.redirect(redirectUrl);
+      }
+
       await user.update({ last_login: new Date() });
     }
 
