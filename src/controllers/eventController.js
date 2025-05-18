@@ -56,7 +56,7 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
     return res.status(404).json(responseFormatter.error("Resident not found", 404));
   }
 
-  console.log(process.env.PAYFAST_MERCHANT_ID, process.env.PAYFAST_MERCHANT_KEY, process.env.PAYFAST_PASSPHRASE);
+
 
   // Create payment data with proper formatting
   const paymentData = {
@@ -119,10 +119,12 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
 //const axios = require('axios');
 
 exports.handlePaymentNotification = asyncHandler(async (req, res) => {
+ 
+
   try {
     const { event_id } = req.params;
     const pfData = req.body;
-event_id;
+    event_id;
     // 1. Verify signature
     const generatedSignature = generatePayfastSignature(pfData, process.env.PAYFAST_PASSPHRASE);
     if (generatedSignature !== pfData.signature) {
@@ -130,7 +132,7 @@ event_id;
         received: pfData.signature,
         generated: generatedSignature
       });
-      return res.status(400).send('Invalid signature');
+     
     }
 
     // 2. Parse custom data
@@ -138,6 +140,7 @@ event_id;
     try {
       customData = JSON.parse(pfData.custom_str1);
     } catch (error) {
+     
       console.error('Error parsing custom_str1:', error);
       return res.status(400).send('Invalid custom data');
     }
@@ -222,7 +225,7 @@ event_id;
     res.status(500).send('Internal server error');
   }
 });
-exports.handlePaymentNotification = asyncHandler(async (req, res) => {
+/*exports.handlePaymentNotification = asyncHandler(async (req, res) => {
   const { event_id } = req.params;
   const pfData = req.body;
 
@@ -262,7 +265,7 @@ event_id;
   }
 
   res.status(200).send('OK');
-});
+});*/
 
 
 // @desc    Get all events
