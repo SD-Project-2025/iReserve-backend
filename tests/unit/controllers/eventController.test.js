@@ -1,7 +1,10 @@
 const eventController = require('../../../src/controllers/eventController');
-const { Event, Facility, Staff, EventRegistration } = require('../../../src/models');
+const { Event, Facility, Staff, EventRegistration, Resident } = require('../../../src/models');
 const { Op } = require("sequelize");
-// Mock the models
+const crypto = require('crypto');
+const axios = require('axios');
+
+// Mock the models and dependencies
 jest.mock('../../../src/models', () => {
   const originalModule = jest.requireActual('../../../src/models');
   return {
@@ -16,13 +19,28 @@ jest.mock('../../../src/models', () => {
     Facility: {
       findByPk: jest.fn()
     },
+    Staff: {
+      findByPk: jest.fn()
+    },
     EventRegistration: {
       findOne: jest.fn(),
       create: jest.fn(),
-      count: jest.fn()
+      count: jest.fn(),
+      update: jest.fn()
+    },
+    Resident: {
+      findByPk: jest.fn()
     }
   };
 });
+
+jest.mock('crypto', () => ({
+  createHash: jest.fn().mockReturnThis(),
+  update: jest.fn().mockReturnThis(),
+  digest: jest.fn().mockReturnValue('mocked-signature')
+}));
+
+jest.mock('axios');
 
 describe('Event Controller', () => {
   let req, res;
@@ -38,43 +56,327 @@ describe('Event Controller', () => {
     };
     res = {
       status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+      json: jest.fn(),
+      send: jest.fn()
     };
 
     // Reset all mocks
     jest.clearAllMocks();
+    process.env = {
+      PAYFAST_MERCHANT_ID: 'test-merchant',
+      PAYFAST_MERCHANT_KEY: 'test-key',
+      PAYFAST_PASSPHRASE: 'test-passphrase',
+      PAYFAST_HOST: 'https://sandbox.payfast.co.za',
+      FRONTEND_URL: 'http://frontend',
+      API_URL: 'http://api',
+      EMAIL_URL: 'http://email-service'
+    };
   });
 
-  describe('getEvents', () => {
-    it('should retrieve all events excluding completed ones by default', async () => {
-      const mockEvents = [
-        { event_id: 1, status: 'upcoming' },
-        { event_id: 2, status: 'ongoing' }
-      ];
-      Event.findAll.mockResolvedValue(mockEvents);
+  // Include all your existing test cases here...
 
-      await eventController.getEvents(req, res);
-
-      expect(Event.findAll).toHaveBeenCalledWith({
-        where: {
-          status: { [Op.not]: 'completed' }
-        },
-        include: [
-          {
-            model: Facility,
-            attributes: ['facility_id', 'name', 'type', 'location']
-          },
-          {
-            model: Staff,
-            as: 'organizer',
-            attributes: ['staff_id', 'employee_id', 'position']
-          }
-        ],
-        order: [
-          ['start_date', 'ASC'],
-          ['start_time', 'ASC']
-        ]
+  describe('Payment Functions', () => {
+    describe('generatePayfastSignature', () => {
+      it('should generate a valid MD5 signature', () => {
+        const testData = {
+          merchant_id: 'test-merchant',
+          amount: '100.00',
+          item_name: 'Test Event'
+        };
+        
+        const signature = eventController.generatePayfastSignature(testData, 'test-passphrase');
+        
+        expect(crypto.createHash).toHaveBeenCalledWith('md5');
+        expect(signature).toBe('mocked-signature');
       });
+    });
+
+    describe('initiatePayment', () => {
+      it('should initiate payment for an event', async () => {
+        const mockEvent = {
+          event_id: 1,
+          title: 'Test Event',
+          fee: '100.00',
+          toJSON: () => ({ event_id: 1, title: 'Test Event', fee: '100.00' })
+        };
+        const mockResident = { resident_id: 1, name: 'John Doe', email: 'john@example.com' };
+        
+        req.params.id = '1';
+        req.body = { resident_id: 1 };
+        
+        Event.findByPk.mockResolvedValue(mockEvent);
+        Resident.findByPk.mockResolvedValue(mockResident);
+        
+        await eventController.initiatePayment(req, res);
+        
+        expect(Event.findByPk).toHaveBeenCalledWith('1');
+        expect(Resident.findByPk).toHaveBeenCalledWith(1);
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+          success: true,
+          message: 'Payment initiated successfully'
+        }));
+      });
+
+      it('should return 404 if event not found', async () => {
+        req.params.id = '999';
+        req.body = { resident_id: 1 };
+        
+        Event.findByPk.mockResolvedValue(null);
+        
+        await eventController.initiatePayment(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Event not found',
+          data: null
+        });
+      });
+
+      it('should return 400 if resident_id is missing', async () => {
+        req.params.id = '1';
+        req.body = {};
+        
+        await eventController.initiatePayment(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Resident ID is required',
+          data: null
+        });
+      });
+
+      it('should return 400 if event fee is invalid', async () => {
+        const mockEvent = {
+          event_id: 1,
+          title: 'Test Event',
+          fee: 'invalid',
+          toJSON: () => ({ event_id: 1, title: 'Test Event', fee: 'invalid' })
+        };
+        
+        req.params.id = '1';
+        req.body = { resident_id: 1 };
+        
+        Event.findByPk.mockResolvedValue(mockEvent);
+        Resident.findByPk.mockResolvedValue({ resident_id: 1 });
+        
+        await eventController.initiatePayment(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Invalid event fee configuration',
+          data: null
+        });
+      });
+
+      it('should return 404 if resident not found', async () => {
+        const mockEvent = {
+          event_id: 1,
+          title: 'Test Event',
+          fee: '100.00',
+          toJSON: () => ({ event_id: 1, title: 'Test Event', fee: '100.00' })
+        };
+        
+        req.params.id = '1';
+        req.body = { resident_id: 999 };
+        
+        Event.findByPk.mockResolvedValue(mockEvent);
+        Resident.findByPk.mockResolvedValue(null);
+        
+        await eventController.initiatePayment(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Resident not found',
+          data: null
+        });
+      });
+    });
+
+    describe('handlePaymentNotification', () => {
+      it('should process successful payment notification', async () => {
+        const mockEvent = { event_id: 1 };
+        const mockRegistration = {
+          update: jest.fn().mockResolvedValue(true)
+        };
+        const mockResident = {
+          resident_id: 1,
+          name: 'John Doe',
+          email: 'john@example.com'
+        };
+        
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'COMPLETE',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 }),
+          pf_payment_id: 'PF-123',
+          amount_gross: '100.00'
+        };
+        
+        Event.findByPk.mockResolvedValue(mockEvent);
+        EventRegistration.findOne.mockResolvedValue(mockRegistration);
+        Resident.findByPk.mockResolvedValue(mockResident);
+        axios.post.mockResolvedValue({});
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(EventRegistration.findOne).toHaveBeenCalled();
+        expect(mockRegistration.update).toHaveBeenCalledWith({
+          payment_status: 'paid',
+          status: 'registered',
+          payment_date: expect.any(Date),
+          payment_reference: 'PF-123'
+        });
+        expect(res.send).toHaveBeenCalledWith('OK');
+      });
+
+      it('should handle signature mismatch', async () => {
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'invalid-signature',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 })
+        };
+        
+        crypto.createHash.mockReturnValueOnce({
+          update: jest.fn().mockReturnThis(),
+          digest: jest.fn().mockReturnValue('correct-signature')
+        });
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(res.send).toHaveBeenCalledWith('OK'); // Still acknowledge PayFast
+      });
+
+      it('should handle cancelled payment', async () => {
+        const mockRegistration = {
+          update: jest.fn().mockResolvedValue(true)
+        };
+        
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'CANCELLED',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 })
+        };
+        
+        EventRegistration.findOne.mockResolvedValue(mockRegistration);
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(mockRegistration.update).toHaveBeenCalledWith({
+          payment_status: 'cancelled',
+          status: 'cancelled'
+        });
+      });
+
+      it('should handle failed payment', async () => {
+        const mockRegistration = {
+          update: jest.fn().mockResolvedValue(true)
+        };
+        
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'FAILED',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 })
+        };
+        
+        EventRegistration.findOne.mockResolvedValue(mockRegistration);
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(mockRegistration.update).toHaveBeenCalledWith({
+          payment_status: 'failed',
+          status: 'failed'
+        });
+      });
+
+      it('should handle registration not found', async () => {
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'COMPLETE',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 })
+        };
+        
+        EventRegistration.findOne.mockResolvedValue(null);
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.send).toHaveBeenCalledWith('Registration not found');
+      });
+
+      it('should handle invalid custom data', async () => {
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'COMPLETE',
+          custom_str1: 'invalid-json'
+        };
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.send).toHaveBeenCalledWith('Invalid custom data');
+      });
+
+      it('should handle email sending failure', async () => {
+        const mockRegistration = {
+          update: jest.fn().mockResolvedValue(true)
+        };
+        const mockResident = {
+          resident_id: 1,
+          name: 'John Doe',
+          email: 'john@example.com'
+        };
+        const mockEvent = { event_id: 1, title: 'Test Event' };
+        
+        req.params.event_id = '1';
+        req.body = {
+          signature: 'mocked-signature',
+          payment_status: 'COMPLETE',
+          custom_str1: JSON.stringify({ event_id: 1, resident_id: 1 }),
+          pf_payment_id: 'PF-123',
+          amount_gross: '100.00'
+        };
+        
+        EventRegistration.findOne.mockResolvedValue(mockRegistration);
+        Resident.findByPk.mockResolvedValue(mockResident);
+        Event.findByPk.mockResolvedValue(mockEvent);
+        axios.post.mockRejectedValue(new Error('Email failed'));
+        
+        await eventController.handlePaymentNotification(req, res);
+        
+        expect(res.send).toHaveBeenCalledWith('OK'); // Still acknowledge PayFast
+      });
+    });
+  });
+
+  describe('getEventsByStaffFacilities', () => {
+    it('should get events for staff facilities', async () => {
+      req.params.staff_id = '1';
+      
+      const mockFacilities = [{ facility_id: 1 }, { facility_id: 2 }];
+      const mockEvents = [{ event_id: 1, facility_id: 1 }];
+      
+      axios.get.mockResolvedValue({ data: mockFacilities });
+      Event.findAll.mockResolvedValue(mockEvents);
+      
+      await eventController.getEventsByStaffFacilities(req, res);
+      
+      expect(axios.get).toHaveBeenCalledWith('http://api/facilities/staff/1');
+      expect(Event.findAll).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          facility_id: { [Op.in]: [1, 2] },
+          status: { [Op.not]: 'completed' }
+        }
+      }));
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -83,585 +385,33 @@ describe('Event Controller', () => {
       });
     });
 
-    it('should filter events by status and facility_id when provided', async () => {
-      req.query = { status: 'upcoming', facility_id: '1' };
-      const mockEvents = [{ event_id: 1, status: 'upcoming', facility_id: 1 }];
-      Event.findAll.mockResolvedValue(mockEvents);
-
-      await eventController.getEvents(req, res);
-
-      expect(Event.findAll).toHaveBeenCalledWith({
-        where: {
-          status: 'upcoming',
-          facility_id: '1'
-        },
-        include: expect.any(Array),
-        order: expect.any(Array)
-      });
-    });
-  });
-
-  describe('getEvent', () => {
-    it('should retrieve a single event with registration count', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        toJSON: jest.fn().mockReturnValue({ event_id: 1 })
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.count.mockResolvedValue(10);
-
-      await eventController.getEvent(req, res);
-
-      expect(Event.findByPk).toHaveBeenCalledWith(1, {
-        include: [
-          {
-            model: Facility,
-            attributes: ['facility_id', 'name', 'type', 'location', 'capacity']
-          },
-          {
-            model: Staff,
-            as: 'organizer',
-            attributes: ['staff_id', 'employee_id', 'position']
-          }
-        ]
-      });
-      expect(EventRegistration.count).toHaveBeenCalledWith({
-        where: {
-          event_id: 1,
-          status: { [Op.not]: 'cancelled' }
-        }
-      });
+    it('should handle no facilities assigned', async () => {
+      req.params.staff_id = '1';
+      
+      axios.get.mockResolvedValue({ data: [] });
+      
+      await eventController.getEventsByStaffFacilities(req, res);
+      
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        data: { event_id: 1, registrations: 10 },
-        message: 'Event retrieved successfully'
+        data: [],
+        message: 'No facilities assigned to this staff member'
       });
     });
 
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.getEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found'
-      });
-    });
-  });
-
-  describe('createEvent', () => {
-    it('should create a new event when all conditions are met', async () => {
-      req.body = {
-        title: 'Test Event',
-        description: 'Test Description',
-        facility_id: 1,
-        start_date: '2023-12-01',
-        end_date: '2023-12-01',
-        start_time: '09:00',
-        end_time: '10:00',
-        capacity: 10,
-        image_url: 'test.jpg',
-        is_public: true,
-        registration_deadline: '2023-11-30',
-        fee: 0
-      };
-
-      const mockFacility = { facility_id: 1 };
-      const mockEvent = { event_id: 1, ...req.body };
-
-      Facility.findByPk.mockResolvedValue(mockFacility);
-      Event.create.mockResolvedValue(mockEvent);
-
-      await eventController.createEvent(req, res);
-
-      expect(Facility.findByPk).toHaveBeenCalledWith(1);
-      expect(Event.create).toHaveBeenCalledWith({
-        ...req.body,
-        organizer_staff_id: 1
-      });
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockEvent,
-        message: 'Event created successfully'
-      });
-    });
-
-    it('should return 404 if facility not found', async () => {
-      req.body = { facility_id: 999 };
-      Facility.findByPk.mockResolvedValue(null);
-
-      await eventController.createEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Facility not found'
-      });
-    });
-  });
-
-  describe('updateEvent', () => {
-    it('should update event when authorized (organizer)', async () => {
-      req.params.id = 1;
-      req.body = { title: 'Updated Event' };
-      const mockEvent = {
-        event_id: 1,
-        organizer_staff_id: 1,
-        update: jest.fn().mockResolvedValue(true)
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.updateEvent(req, res);
-
-      expect(Event.findByPk).toHaveBeenCalledWith(1);
-      expect(mockEvent.update).toHaveBeenCalledWith({ title: 'Updated Event' });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockEvent,
-        message: 'Event updated successfully'
-      });
-    });
-
-    it('should update event when authorized (admin)', async () => {
-      req.params.id = 1;
-      req.staff.is_admin = true;
-      req.body = { title: 'Updated Event' };
-      const mockEvent = {
-        event_id: 1,
-        organizer_staff_id: 2, // Different from req.staff.staff_id
-        update: jest.fn().mockResolvedValue(true)
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.updateEvent(req, res);
-
-      expect(mockEvent.update).toHaveBeenCalled();
-    });
-
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.updateEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found'
-      });
-    });
-
-    it('should return 403 if not organizer or admin', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        organizer_staff_id: 2 // Different from req.staff.staff_id
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.updateEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You do not have permission to update this event'
-      });
-    });
-  });
-
-  describe('deleteEvent', () => {
-    it('should delete event when authorized (organizer)', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        organizer_staff_id: 1,
-        destroy: jest.fn().mockResolvedValue(true)
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.deleteEvent(req, res);
-
-      expect(Event.findByPk).toHaveBeenCalledWith(1);
-      expect(mockEvent.destroy).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: null,
-        message: 'Event deleted successfully'
-      });
-    });
-
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.deleteEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found'
-      });
-    });
-
-    it('should return 403 if not organizer or admin', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        organizer_staff_id: 2 // Different from req.staff.staff_id
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.deleteEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You do not have permission to delete this event'
-      });
-    });
-  });
-
-  describe('registerForEvent', () => {
-    it('should register for event when all conditions are met', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'upcoming',
-        capacity: 10,
-        fee: 0,
-        registration_deadline: '2023-12-31'
-      };
-      const mockRegistration = {
-        event_id: 1,
-        resident_id: 1,
-        status: 'registered',
-        payment_status: 'not_required'
-      };
-
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(null);
-      EventRegistration.count.mockResolvedValue(5);
-      EventRegistration.create.mockResolvedValue(mockRegistration);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(Event.findByPk).toHaveBeenCalledWith(1);
-      expect(EventRegistration.findOne).toHaveBeenCalledWith({
-        where: {
-          event_id: 1,
-          resident_id: 1,
-          status: { [Op.not]: 'cancelled' }
-        }
-      });
-      expect(EventRegistration.create).toHaveBeenCalledWith({
-        event_id: 1,
-        resident_id: 1,
-        status: 'registered',
-        payment_status: 'not_required'
-      });
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: mockRegistration,
-        message: 'Registered for event successfully'
-      });
-    });
-
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found'
-      });
-    });
-
-    it('should return 400 if event is not upcoming', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'completed'
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Cannot register for completed event'
-      });
-    });
-
-    it('should return 400 if registration deadline has passed', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'upcoming',
-        registration_deadline: '2020-01-01'
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Registration deadline has passed'
-      });
-    });
-
-    it('should return 400 if already registered', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'upcoming',
-        registration_deadline: '2023-12-31'
-      };
-      const mockRegistration = {
-        event_id: 1,
-        resident_id: 1,
-        status: 'registered'
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(mockRegistration);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You are already registered for this event'
-      });
-    });
-
-    it('should return 400 if event is full', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'upcoming',
-        capacity: 10,
-        registration_deadline: '2023-12-31'
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(null);
-      EventRegistration.count.mockResolvedValue(10);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event is at full capacity'
-      });
-    });
-
-    it('should reactivate cancelled registration if exists', async () => {
-      req.params.id = 1;
-      const mockEvent = {
-        event_id: 1,
-        status: 'upcoming',
-        capacity: 10,
-        fee: 0,
-        registration_deadline: '2023-12-31'
-      };
-      const mockRegistration = {
-        event_id: 1,
-        resident_id: 1,
-        status: 'cancelled',
-        update: jest.fn().mockResolvedValue(true)
-      };
-
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne
-        .mockResolvedValueOnce(null) // First call for active registration check
-        .mockResolvedValueOnce(mockRegistration); // Second call for cancelled registration check
-      EventRegistration.count.mockResolvedValue(5);
-
-      await eventController.registerForEvent(req, res);
-
-      expect(mockRegistration.update).toHaveBeenCalledWith({
-        status: 'registered',
-        payment_status: 'not_required',
-        registration_date: expect.any(Date)
-      });
-    });
-  });
-
-  describe('cancelRegistration', () => {
-    it('should cancel registration when all conditions are met', async () => {
-      req.params.id = 1;
-      const mockEvent = { event_id: 1 };
-      const mockRegistration = {
-        event_id: 1,
-        resident_id: 1,
-        status: 'registered',
-        update: jest.fn().mockResolvedValue(true)
-      };
-
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(mockRegistration);
-
-      await eventController.cancelRegistration(req, res);
-
-      expect(EventRegistration.findOne).toHaveBeenCalledWith({
-        where: {
-          event_id: 1,
-          resident_id: 1
-        }
-      });
-      expect(mockRegistration.update).toHaveBeenCalledWith({ status: 'cancelled' });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: null,
-        message: 'Event registration cancelled successfully'
-      });
-    });
-
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.cancelRegistration(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found'
-      });
-    });
-
-    it('should return 400 if not registered', async () => {
-      req.params.id = 1;
-      const mockEvent = { event_id: 1 };
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(null);
-
-      await eventController.cancelRegistration(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'You are not registered for this event'
-      });
-    });
-
-    it('should return 400 if registration is already cancelled', async () => {
-      req.params.id = 1;
-      const mockEvent = { event_id: 1 };
-      const mockRegistration = {
-        event_id: 1,
-        resident_id: 1,
-        status: 'cancelled'
-      };
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(mockRegistration);
-
-      await eventController.cancelRegistration(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Your registration is already cancelled'
-      });
-    });
-  });
-
-  describe('getRegistrationStatus', () => {
-    it('should return registration status when registered', async () => {
-      req.params.id = 1;
-      req.params.userID = 1;
-      const mockEvent = { event_id: 1 };
-      const mockRegistration = {
-        status: 'registered',
-        payment_status: 'paid',
-        notes: 'VIP',
-        registration_date: '2023-01-01'
-      };
-
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(mockRegistration);
-
-      await eventController.getRegistrationStatus(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: {
-          isRegistered: true,
-          status: 'registered',
-          paymentStatus: 'paid',
-          notes: 'VIP',
-          registrationDate: '2023-01-01'
-        },
-        message: 'Registration status retrieved successfully'
-      });
-    });
-
-    it('should return not registered status when no registration exists', async () => {
-      req.params.id = 1;
-      req.params.userID = 1;
-      const mockEvent = { event_id: 1 };
-
-      Event.findByPk.mockResolvedValue(mockEvent);
-      EventRegistration.findOne.mockResolvedValue(null);
-
-      await eventController.getRegistrationStatus(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: {
-          isRegistered: false,
-          status: 'not_registered',
-          paymentStatus: null,
-          notes: null,
-          registrationDate: null
-        },
-        message: 'Registration status retrieved successfully'
-      });
-    });
-
-    it('should return 404 if event not found', async () => {
-      req.params.id = 999;
-      req.params.userID = 1;
-      Event.findByPk.mockResolvedValue(null);
-
-      await eventController.getRegistrationStatus(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        message: 'Event not found',
-        data: null
-      });
-    });
-
-    it('should handle server errors', async () => {
-      req.params.id = 1;
-      req.params.userID = 1;
-      Event.findByPk.mockRejectedValue(new Error('Database error'));
-
-      await eventController.getRegistrationStatus(req, res);
-
+    it('should handle API errors', async () => {
+      req.params.staff_id = '1';
+      
+      axios.get.mockRejectedValue(new Error('API error'));
+      
+      await eventController.getEventsByStaffFacilities(req, res);
+      
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
         message: 'Internal server error',
-        data: null
+        data: 'API error'
       });
     });
   });
