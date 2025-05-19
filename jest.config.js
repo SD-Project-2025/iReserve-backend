@@ -14,6 +14,7 @@ module.exports = {
     "src/controllers/bookingController.js",
     "src/middleware/auth.js",
     "src/middleware/errorHandler.js",
+    "src/middleware/roleCheck.js",
     "src/middleware/validate.js",
     "src/models/**/*.js",
     "src/routes/**/*.js",
@@ -21,6 +22,7 @@ module.exports = {
     "src/utils/responseFormatter.js",
     "src/validations/**/*.js",
     "src/controllers/authController.js",
+
   ],
 
   coverageThreshold: {
