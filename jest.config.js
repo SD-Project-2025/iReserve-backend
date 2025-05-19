@@ -41,7 +41,7 @@ module.exports = {
     "src/config/database.js",
     "src/utils/logger.js",
     "src/services/encryptionService.js",
-    "src/controllers/authController.js",
+    
     "src/controllers/maintenanceController.js",
     "src/controllers/userController.js",
   ],
