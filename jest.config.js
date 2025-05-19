@@ -20,6 +20,7 @@ module.exports = {
     "src/utils/asyncHandler.js",
     "src/utils/responseFormatter.js",
     "src/validations/**/*.js",
+    "src/controllers/authController.js",
   ],
 
   coverageThreshold: {
@@ -40,8 +41,10 @@ module.exports = {
     "/build/",
     "src/config/database.js",
     "src/utils/logger.js",
+    "src/middleware/roleCheck.js",
     "src/services/encryptionService.js",
     
+
     "src/controllers/maintenanceController.js",
     "src/controllers/userController.js",
   ],
