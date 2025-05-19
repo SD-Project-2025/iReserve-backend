@@ -1,5 +1,5 @@
 const eventController = require('../../../src/controllers/eventController');
-const { Event, Facility, Staff, EventRegistration, Resident } = require('../../../src/models');
+const { Event, EventRegistration, Resident } = require('../../../src/models');
 const { Op } = require("sequelize");
 const crypto = require('crypto');
 const axios = require('axios');
