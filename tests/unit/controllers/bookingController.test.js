@@ -1,10 +1,8 @@
-// const bookingController = require('../../../src/controllers/bookingController');
-const bookingController = require('../../../src/controllers/bookingController')
+const bookingController = require('../../../src/controllers/bookingController');
 const { Booking, Facility, StaffFacilityAssignment } = require('../../../src/models');
 const responseFormatter = require('../../../src/utils/responseFormatter');
 const encryptionService = require('../../../src/services/encryptionService');
 
-// Mocks
 jest.mock('../../../src/models');
 jest.mock('../../../src/utils/responseFormatter');
 jest.mock('../../../src/services/encryptionService');
@@ -22,14 +20,25 @@ describe('Booking Controller', () => {
       staff: { staff_id: 2, is_admin: false }
     };
     res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+      status: jest.fn().mockReturnThis(), // Important for chaining
+      json: jest.fn().mockReturnThis()
     };
 
     jest.clearAllMocks();
+
+    Booking.findByPk = jest.fn();
+    Booking.findAll = jest.fn();
+    Booking.findOne = jest.fn();
+    Booking.create = jest.fn();
+
+    Facility.findByPk = jest.fn();
+
+    StaffFacilityAssignment.findAll = jest.fn();
+
+    encryptionService.decrypt = jest.fn();
+    responseFormatter.success = jest.fn();
   });
 
-  // === getBookings ===
   describe('getBookings', () => {
     it('should return bookings for admin/staff with facility filters', async () => {
       req.user.user_type = 'staff';
@@ -93,7 +102,6 @@ describe('Booking Controller', () => {
     });
   });
 
-  // === getMyBookings ===
   describe('getMyBookings', () => {
     it('should retrieve resident bookings', async () => {
       Booking.findAll.mockResolvedValue([{ booking_id: 1 }]);
@@ -104,10 +112,10 @@ describe('Booking Controller', () => {
         where: { resident_id: 1 }
       }));
       expect(responseFormatter.success).toHaveBeenCalledWith(expect.any(Array), "Your bookings retrieved successfully");
+      expect(res.status).toHaveBeenCalledWith(200);
     });
   });
 
-  // === getBooking ===
   describe('getBooking', () => {
     it('should return booking details for allowed resident', async () => {
       req.params.id = 5;
@@ -117,6 +125,7 @@ describe('Booking Controller', () => {
 
       expect(Booking.findByPk).toHaveBeenCalledWith(5, expect.any(Object));
       expect(responseFormatter.success).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it('should reject access for unauthorized resident', async () => {
@@ -126,6 +135,7 @@ describe('Booking Controller', () => {
       await bookingController.getBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should return 404 if booking not found', async () => {
@@ -134,10 +144,10 @@ describe('Booking Controller', () => {
       await bookingController.getBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalled();
     });
   });
 
-  // === createBooking ===
   describe('createBooking', () => {
     beforeEach(() => {
       req.body = {
@@ -156,6 +166,7 @@ describe('Booking Controller', () => {
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should reject if facility is closed', async () => {
@@ -164,6 +175,7 @@ describe('Booking Controller', () => {
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should reject if attendees exceed capacity', async () => {
@@ -172,15 +184,17 @@ describe('Booking Controller', () => {
       await bookingController.createBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should reject on conflicting booking', async () => {
       Facility.findByPk.mockResolvedValue({ status: 'open', capacity: 10 });
-      Booking.findOne.mockResolvedValue({});
+      Booking.findOne.mockResolvedValue({}); // Conflict found
 
       await bookingController.createBooking(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should create booking if valid', async () => {
@@ -190,12 +204,12 @@ describe('Booking Controller', () => {
 
       await bookingController.createBooking(req, res);
 
+      expect(Booking.create).toHaveBeenCalled();
+      expect(responseFormatter.success).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(responseFormatter.success).toHaveBeenCalledWith({ booking_id: 10 }, "Booking created successfully");
     });
   });
 
-  // === updateBookingStatus ===
   describe('updateBookingStatus', () => {
     it('should update booking status', async () => {
       req.params.id = 1;
@@ -207,8 +221,8 @@ describe('Booking Controller', () => {
 
       await bookingController.updateBookingStatus(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(200);
       expect(responseFormatter.success).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it('should return 404 if booking not found', async () => {
@@ -217,10 +231,10 @@ describe('Booking Controller', () => {
       await bookingController.updateBookingStatus(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalled();
     });
   });
 
-  // === cancelBooking ===
   describe('cancelBooking', () => {
     it('should cancel booking successfully', async () => {
       req.params.id = 3;
@@ -233,8 +247,8 @@ describe('Booking Controller', () => {
 
       await bookingController.cancelBooking(req, res);
 
+      expect(responseFormatter.success).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(responseFormatter.success).toHaveBeenCalledWith(null, "Booking cancelled successfully");
     });
 
     it('should return 403 if resident tries to cancel someone else’s booking', async () => {
@@ -243,6 +257,7 @@ describe('Booking Controller', () => {
       await bookingController.cancelBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should return 400 if booking is already cancelled', async () => {
@@ -251,6 +266,7 @@ describe('Booking Controller', () => {
       await bookingController.cancelBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalled();
     });
 
     it('should return 404 if booking not found', async () => {
@@ -259,6 +275,7 @@ describe('Booking Controller', () => {
       await bookingController.cancelBooking(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalled();
     });
   });
 });

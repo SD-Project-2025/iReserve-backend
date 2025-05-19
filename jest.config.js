@@ -11,6 +11,7 @@ module.exports = {
     "src/controllers/notificationController.js",
     "src/config/swagger.js",
     "src/controllers/staffAssignmentController.js",
+    "src/controllers/bookingController.js",
     "src/middleware/auth.js",
     "src/middleware/errorHandler.js",
     "src/middleware/validate.js",
@@ -33,18 +34,15 @@ module.exports = {
   coveragePathIgnorePatterns: [
     "/node_modules/",
     "/tests/",
-    "src/models/facility.js", // slightly under 84%, exclude if needed
     "src/utils/responseFormatter.js", // branch coverage is 0%
     "src/scripts/",
     "/dist/",
     "/build/",
     "src/config/database.js",
     "src/utils/logger.js",
-    "src/middleware/roleCheck.js",
+    //"src/middleware/roleCheck.js",
     "src/services/encryptionService.js",
     "src/controllers/authController.js",
-    "src/controllers/bookingController.js",
-    "src/controllers/eventController.js",
     "src/controllers/maintenanceController.js",
     "src/controllers/userController.js",
   ],
