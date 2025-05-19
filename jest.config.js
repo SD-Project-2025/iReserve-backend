@@ -40,7 +40,6 @@ module.exports = {
     "/build/",
     "src/config/database.js",
     "src/utils/logger.js",
-    //"src/middleware/roleCheck.js",
     "src/services/encryptionService.js",
     "src/controllers/authController.js",
     "src/controllers/maintenanceController.js",
