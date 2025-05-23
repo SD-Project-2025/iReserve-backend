@@ -4,7 +4,7 @@ const asyncHandler = require("../utils/asyncHandler")
 const responseFormatter = require("../utils/responseFormatter")
 const { Op } = require('sequelize');
 const axios = require('axios');
-
+const encryptionService = require("../services/encryptionService");
 
 //initiate payment
 const generatePayfastSignature = (data, passPhrase = null) => {
@@ -397,6 +397,62 @@ exports.createEvent = asyncHandler(async (req, res) => {
 
   res.status(201).json(responseFormatter.success(event, "Event created successfully"))
 })
+
+// @desc    Get all attendees for an event
+// @route   GET /api/v1/events/:id/attendees
+// @access  Public
+exports.getAttendees = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Check if the event exists
+  const event = await Event.findByPk(id);
+  if (!event) {
+    return res.status(404).json(responseFormatter.error("Event not found", 404));
+  }
+
+  // Retrieve all non-cancelled registrations for the event
+  const registrations = await EventRegistration.findAll({
+    where: {
+      event_id: id,
+      status: {
+        [Op.not]: 'cancelled' // Exclude cancelled registrations
+      }
+    },
+    include: [{
+      model: Resident,
+      attributes: ['resident_id', 'name', 'email'],
+      required: true
+    }],
+    order: [[Resident, 'name', 'ASC']]
+  });
+
+  // Safe decryption function
+  const safeDecrypt = (encryptedValue) => {
+    if (!encryptedValue) return null;
+    try {
+      return encryptionService.decrypt(encryptedValue);
+    } catch (error) {
+      console.error("Decryption error:", error.message);
+      return null;
+    }
+  };
+
+  // Map and decrypt sensitive fields
+  const attendees = registrations.map(registration => {
+    const resident = registration.Resident.get({ plain: true });
+    
+    return {
+      resident_id: resident.resident_id,
+      name: safeDecrypt(resident.name),
+      email: safeDecrypt(resident.email),
+      registration_status: registration.status,
+      payment_status: registration.payment_status,
+      registration_date: registration.registration_date
+    };
+  });
+
+  res.status(200).json(responseFormatter.success(attendees, "Attendees retrieved successfully"));
+});
 
 // @desc    Update event
 // @route   PUT /api/v1/events/:id

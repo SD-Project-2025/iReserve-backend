@@ -329,6 +329,55 @@ router.get("/:id/status/:userID", protect, isResident, eventController.getRegist
 
 router.get("/staff/:staff_id/events", eventController.getEventsByStaffFacilities);
 
+// Add this Swagger documentation block before the router definitions:
 
+/**
+ * @swagger
+ * /events/{id}/attendees:
+ *   get:
+ *     summary: Get all attendees for an event
+ *     tags: [Events]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Event ID
+ *     responses:
+ *       200:
+ *         description: List of attendees
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   resident_id:
+ *                     type: integer
+ *                     example: 123
+ *                   name:
+ *                     type: string
+ *                     example: "John Doe"
+ *                   email:
+ *                     type: string
+ *                     example: "john@example.com"
+ *                   registration_status:
+ *                     type: string
+ *                     example: "registered"
+ *                   payment_status:
+ *                     type: string
+ *                     example: "paid"
+ *                   registration_date:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2023-08-15T10:00:00Z"
+ *       404:
+ *         description: Event not found
+ */
+
+// Add this route definition in the appropriate place (after GET /:id)
+router.get("/:id/attendees", eventController.getAttendees);
 
 module.exports = router
