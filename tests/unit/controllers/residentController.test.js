@@ -1,7 +1,6 @@
 const { getResidentNames } = require('../../../src/controllers/residentController');
 const { Resident } = require('../../../src/models'); // Fixed path
 const encryptionService = require('../../../src/services/encryptionService');
-const responseFormatter = require('../../../src/utils/responseFormatter');
 
 // Mock the models
 jest.mock('../../../src/models', () => ({
