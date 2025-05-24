@@ -5,6 +5,7 @@ const { protect } = require("../middleware/auth");
 const { isAdmin } = require("../middleware/roleCheck");
 const validate = require("../middleware/validate");
 const userValidation = require("../validations/userValidation");
+const assignValidation = require("../validations/assignmentValidation");
 
 /**
  * @swagger
@@ -262,5 +263,157 @@ router.get("/staff", protect, isAdmin, userController.getStaffMembers);
  *         description: Not authorized
  */
 router.get("/residents", protect, isAdmin, userController.getResidents);
+/**
+ * @swagger
+ * /manage/users/staff/assign:
+ *   post:
+ *     summary: Assign staff member to facility
+ *     tags: [User Management]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - facilityId
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 example: 35
+ *                 description: ID of the staff user to assign
+ *               facilityId:
+ *                 type: integer
+ *                 example: 14
+ *                 description: ID of the facility to assign to
+ *     responses:
+ *       201:
+ *         description: Staff assigned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StaffFacilityAssignment'
+ *       400:
+ *         description: Invalid input or duplicate assignment
+ *       404:
+ *         description: Staff user or facility not found
+ */
+router.post(
+  "/staff/assign",
+  protect,
+  isAdmin,
+  //validate(userValidation.assignSchema),
+  userController.assignStaff
+);
+
+/**
+ * @swagger
+ * /manage/users/staff/unassign:
+ *   delete:
+ *     summary: Unassign staff member from facility
+ *     tags: [User Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: facilityId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Staff unassigned successfully
+ */
+router.delete(
+  "/staff/unassign",
+  protect,
+  isAdmin,
+  //validate(userValidation.unassignSchema, { context: 'query' }),
+  userController.unassignStaff
+);
+
+/**
+ * @swagger
+ * /manage/users/{userId}/assignments:
+ *   get:
+ *     summary: Get staff member's facility assignments
+ *     tags: [User Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the staff user
+ *     responses:
+ *       200:
+ *         description: List of facility assignments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   assignment_id:
+ *                     type: integer
+ *                     example: 1
+ *                   facility_id:
+ *                     type: integer
+ *                     example: 14
+ *                   name:
+ *                     type: string
+ *                     example: "Main Gym"
+ *                   type:
+ *                     type: string
+ *                     example: "Gymnasium"
+ *                   location:
+ *                     type: string
+ *                     example: "Building A, 2nd Floor"
+ *                   capacity:
+ *                     type: integer
+ *                     example: 100
+ *                   status:
+ *                     type: string
+ *                     example: "open"
+ *                   open_time:
+ *                     type: string
+ *                     example: "08:00:00"
+ *                   close_time:
+ *                     type: string
+ *                     example: "22:00:00"
+ *                   image_url:
+ *                     type: string
+ *                     example: "https://example.com/gym.jpg"
+ *                   role:
+ *                     type: string
+ *                     example: "FacilityStaff"
+ *                   is_primary:
+ *                     type: boolean
+ *                     example: true
+ *                   assigned_date:
+ *                     type: string
+ *                     format: date
+ *                     example: "2023-08-15"
+ *       404:
+ *         description: Staff profile not found
+ */
+router.get(
+  "/:userId/assignments",
+  protect,
+  isAdmin,
+  //validate(userValidation.staffAssignmentsSchema, { params: true }),
+  userController.getStaffAssignments
+);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-const { User, Resident, Staff } = require("../models");
+const { User, Resident, Staff,StaffFacilityAssignment,Facility} = require("../models");
 const asyncHandler = require("../utils/asyncHandler");
 const responseFormatter = require("../utils/responseFormatter");
 const encryptionService = require("../services/encryptionService");
@@ -222,7 +222,7 @@ exports.getResidents = asyncHandler(async (req, res) => {
     include: [{
       model: Resident,
       attributes: ['membership_type', 'name', 'email'],
-      required: true // Ensures only users with resident profiles
+      required: true 
     }]
   });
 
@@ -243,4 +243,190 @@ exports.getResidents = asyncHandler(async (req, res) => {
   }).filter(resident => resident !== null); // Remove null entries
 
   res.status(200).json(responseFormatter.success(processedResidents, "Residents retrieved successfully"));
+});
+/**
+ * @swagger
+ * /users/staff/assign:
+ *   post:
+ *     summary: Assign a staff member to a facility
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - staff_id
+ *               - facility_id
+ *             properties:
+ *               staff_id:
+ *                 type: integer
+ *                 example: 1
+ *               facility_id:
+ *                 type: integer
+ *                 example: 1
+ *     responses:
+ *       201:
+ *         description: Staff assigned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StaffFacilityAssignment'
+ *       400:
+ *         description: Invalid input or already assigned
+ *       404:
+ *         description: Staff or facility not found
+ */
+exports.assignStaff = asyncHandler(async (req, res) => {
+  const { userId, facilityId } = req.body;
+
+  return sequelize.transaction(async (t) => {
+    
+    const targetUser = await User.findByPk(userId, { transaction: t });
+    if (!targetUser || targetUser.user_type !== 'staff') {
+      return res.status(404).json(
+        responseFormatter.error("Staff user not found", 404)
+      );
+    }
+
+    
+    const staff = await Staff.findOne({ 
+      where: { user_id: userId },
+      transaction: t 
+    });
+    
+    if (!staff) {
+      return res.status(404).json(
+        responseFormatter.error("Staff profile not found", 404)
+      );
+    }
+
+   
+    const facility = await Facility.findByPk(facilityId, { transaction: t });
+    if (!facility) {
+      return res.status(404).json(
+        responseFormatter.error("Facility not found", 404)
+      );
+    }
+
+    
+    const existingAssignment = await StaffFacilityAssignment.findOne({
+      where: { 
+        staff_id: staff.staff_id, 
+        facility_id: facilityId 
+      },
+      transaction: t
+    });
+
+    if (existingAssignment) {
+      return res.status(400).json(
+        responseFormatter.error("Staff already assigned to this facility", 400)
+      );
+    }
+
+    // 5. Create assignment
+    const assignment = await StaffFacilityAssignment.create({
+      staff_id: staff.staff_id,
+      facility_id: facilityId,
+      role: "FacilityStaff",
+      is_primary: true,
+      assigned_date: new Date()
+    }, { transaction: t });
+
+    res.status(201).json(
+      responseFormatter.success(assignment, "Staff assigned successfully")
+    );
+  });
+});
+
+exports.unassignStaff = asyncHandler(async (req, res) => {
+  const { userId, facilityId } = req.query;
+
+  return sequelize.transaction(async (t) => {
+    
+    const targetUser = await User.findByPk(userId, { transaction: t });
+    if (!targetUser || targetUser.user_type !== 'staff') {
+      return res.status(404).json(
+        responseFormatter.error("Staff user not found", 404)
+      );
+    }
+
+    
+    const staff = await Staff.findOne({ 
+      where: { user_id: userId },
+      transaction: t 
+    });
+    if (!staff) {
+      return res.status(404).json(
+        responseFormatter.error("Staff profile not found", 404)
+      );
+    }
+    
+    const assignment = await StaffFacilityAssignment.findOne({
+      where: { 
+        staff_id: staff.staff_id, 
+        facility_id: facilityId 
+      },
+      transaction: t
+    });
+
+    if (!assignment) {
+      return res.status(404).json(
+        responseFormatter.error("Assignment not found", 404)
+      );
+    }
+
+    
+    await assignment.destroy({ transaction: t });
+    
+    res.status(200).json(
+      responseFormatter.success(null, "Staff unassigned successfully")
+    );
+  });
+});
+exports.getStaffAssignments = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  return sequelize.transaction(async (t) => {
+   
+    const staff = await Staff.findOne({
+      where: { user_id: userId },
+      transaction: t
+    });
+    if (!staff) {
+      return res.status(404).json(
+        responseFormatter.error("Staff profile not found", 404)
+      );
+    }
+
+
+    
+    const assignments = await StaffFacilityAssignment.findAll({
+      where: { staff_id: staff.staff_id },
+      include: [{
+        model: Facility,
+        attributes: [
+          'facility_id', 'name', 'type', 'location', 'capacity',
+          'status', 'open_time', 'close_time', 'image_url'
+        ]
+      }],
+      transaction: t
+    });
+
+
+   
+    const facilities = assignments.map(assignment => ({
+      assignment_id: assignment.assignment_id,
+      role: assignment.role,
+      assigned_date: assignment.assigned_date,
+      is_primary: assignment.is_primary,
+      ...assignment.Facility.get({ plain: true })
+    }));
+
+    res.status(200).json(
+      responseFormatter.success(facilities, "Assignments retrieved successfully")
+    );
+  });
 });
