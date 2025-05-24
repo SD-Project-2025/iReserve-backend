@@ -58,14 +58,6 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
 
 
 
- const registration = await EventRegistration.create({
-    event_id: event.event_id,
-    resident_id: resident_id,
-    payment_status: 'pending',
-    status: 'pending',
-    payment_reference: `INIT-${Date.now()}`
-  });
-
   // Create payment data with proper formatting
   const paymentData = {
     merchant_id: process.env.PAYFAST_MERCHANT_ID,
@@ -73,14 +65,14 @@ exports.initiatePayment = asyncHandler(async (req, res) => {
     return_url: `${process.env.FRONTEND_URL}/payments/${event.event_id}/success`,
     cancel_url: `${process.env.FRONTEND_URL}/payments/${event.event_id}/cancel`,
     notify_url: `${process.env.API_URL}/events/${event.event_id}/payment-notify`,
-    m_payment_id: `EVENT-${event.event_id}-${registration.id}`, // Use registration ID
+    m_payment_id: `EVENT-${event.event_id}-${Date.now()}`,
     amount: amount.toFixed(2),
     item_name: `Event Reg: ${event.title.substring(0, 95)}`,
     item_description: `Registration for ${event.title.substring(0, 250)}`,
     custom_str1: JSON.stringify({
       event_id: event.event_id,
       resident_id: resident_id,
-      registration_id: registration.id // Add registration ID to custom data
+      timestamp: Date.now()
     })
   };
 
