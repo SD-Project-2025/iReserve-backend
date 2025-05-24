@@ -8,6 +8,7 @@ const maintenanceRoutes = require("./maintenance")
 const notificationRoutes = require("./notifications")
 const facilityRoutes = require("./facilities")
 const userRoutes = require("./userRoutes")
+const residentRoutes = require('./residentRoutes');
 //const emailRoutes = require("./emailNotifications")
 
 // Mount routes
@@ -20,6 +21,7 @@ router.use("/facilities", facilityRoutes)
 router.use("/maintenance", maintenanceRoutes)
 router.use("/notifications", notificationRoutes)
 router.use("/manage/users", userRoutes)
+router.use('/residents', residentRoutes);
 
 
 
