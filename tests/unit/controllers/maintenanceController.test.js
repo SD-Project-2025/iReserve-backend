@@ -1,9 +1,6 @@
 const maintenanceController = require('../../../src/controllers/maintenanceController');
-const { MaintenanceReport, Facility, Resident, Staff, StaffFacilityAssignment } = require('../../../src/models');
+const { MaintenanceReport, Facility, Resident, StaffFacilityAssignment } = require('../../../src/models');
 const responseFormatter = require('../../../src/utils/responseFormatter');
-const encryptionService = require('../../../src/services/encryptionService');
-const { Op } = require('sequelize');
-const { subDays, startOfToday } = require('date-fns');
 
 // Mock the models and dependencies
 jest.mock('../../../src/models', () => {
